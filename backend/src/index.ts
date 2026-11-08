@@ -18,7 +18,6 @@ if (existsSync(frontendDist)) {
   await app.register(fastifyStatic, {
     root: frontendDist,
     prefix: "/",
-    wildcard: false,
   });
 
   app.setNotFoundHandler((request, reply) => {
