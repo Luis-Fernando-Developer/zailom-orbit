@@ -1,5 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import gsap from "gsap";
+
+import { useMemo, useState, type ReactNode } from "react";
+import LoadingDash from "./LoadingDashboard/LoadingDash";
 
 type IconName = "grid" | "calendar" | "layers" | "inbox" | "zap" | "chart" | "settings" | "search" | "bell" | "plus" | "chevron" | "more" | "instagram" | "arrow" | "clock" | "heart" | "message" | "eye" | "send" | "filter" | "spark" | "menu" | "close";
 
@@ -26,7 +27,7 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>,
     send: <><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></>,
     filter: <><path d="M4 6h16M7 12h10m-7 6h4"/></>,
-    spark: <><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3Z"/><path d="m19 14 1 2.5 2 1-2 1L19 21l-1-2.5-2-1 2-1 1-2.5Z"/></>,
+    spark: <><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3Z"/><path d="m19 14 1 2.5 2 1-2 1L19 21l-1-2.5-2-1-2-1 1-2.5Z"/></>,
     menu: <><path d="M4 6h16M4 12h16M4 18h16"/></>,
     close: <><path d="m18 6-12 12M6 6l12 12"/></>,
   };
@@ -51,34 +52,13 @@ const upcoming = [
 ];
 
 export default function App() {
-  const introRef = useRef<HTMLDivElement>(null);
-  const brandRef = useRef<HTMLDivElement>(null);
-  const shellRef = useRef<HTMLDivElement>(null);
-  const mainRef = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    const intro = introRef.current, brand = brandRef.current, shell = shellRef.current, main = mainRef.current;
-    if (!intro || !brand || !shell || !main) return;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) { gsap.set(intro, { display: "none" }); gsap.set([shell, main], { opacity: 1, scale: 1 }); return; }
-    const ctx = gsap.context(() => {
-      const mobile = window.matchMedia("(max-width: 800px)").matches;
-      const timeline = gsap.timeline({ defaults: { ease: "power3.out" }, onComplete: () => gsap.set(intro, { autoAlpha: 0, display: "none" }) });
-      gsap.set(brand, { xPercent: -50, yPercent: -50, scale: .82, autoAlpha: 0, left: "50%", top: "50%" });
-      gsap.set(shell, { autoAlpha: 0, scale: .986 }); gsap.set(main, { scale: .988, transformOrigin: "center" });
-      timeline.to(brand, { autoAlpha: 1, scale: 1, duration: .35 })
-        .to(brand, { left: mobile ? 56 : 52, top: mobile ? 30 : 37, scale: mobile ? .42 : .48, autoAlpha: 1, duration: 1.05, ease: "power2.inOut" })
-        .to(shell, { autoAlpha: 1, scale: 1.004, duration: .55 }, "-=.35")
-        .to(main, { scale: 1.006, duration: .42 }, "-=.25")
-        .to([shell, main], { scale: 1, duration: .28, ease: "power2.out" }, "-=.18")
-        .to(brand, { autoAlpha: 0, duration: .16 }, "-=.2");
-    }, intro);
-    return () => ctx.revert();
-  }, []);
+  const [showLoading, setShowLoading] = useState(true);
   const [active, setActive] = useState("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [period, setPeriod] = useState("7 dias");
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
+
   const activeLabel = useMemo(() => navigation.flatMap(group => group.items).find(item => item.id === active)?.label ?? "Configurações", [active]);
 
   const selectPage = (id: string) => { setActive(id); setMobileOpen(false); };
@@ -87,73 +67,71 @@ export default function App() {
 
   return (
     <>
-      <div className="intro-screen" ref={introRef} aria-hidden="true">
-        <div className="intro-brand" ref={brandRef}>
-          <span className="intro-symbol">o<span>.</span></span>
-          <span className="intro-copy"><strong>zailom</strong><small>ORBIT</small></span>
-        </div>
-      </div>
-      <div className="app-shell" ref={shellRef}>
-      <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
-        <button className="brand" onClick={() => selectPage("overview")} aria-label="Ir para visão geral">
-          <span className="brand-symbol">o<span>.</span></span>
-          <span className="brand-copy"><strong>zailom</strong><small>ORBIT</small></span>
-        </button>
-        <div className="workspace-switch">
-          <div className="workspace-avatar">M</div>
-          <div className="workspace-name"><strong>Minha marca</strong><span>Instagram conectado em breve</span></div>
-          <span className="switch-chevron">⌄</span>
-        </div>
-        <nav className="side-nav">
-          {navigation.map(group => <div className="nav-group" key={group.label}>
-            <p className="nav-heading">{group.label}</p>
-            {group.items.map(item => <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => selectPage(item.id)}>
-              <Icon name={item.icon}/><span>{item.label}</span>{item.count && <small>{item.count}</small>}
-            </button>)}
-          </div>)}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="help-card"><div className="help-icon"><Icon name="spark" size={16}/></div><strong>Seu próximo passo</strong><p>Conecte seu Instagram para liberar todo o potencial do Orbit.</p><button onClick={() => setNotice("A conexão oficial com Instagram será ativada na próxima etapa.")}>Conectar conta <Icon name="arrow" size={14}/></button></div>
-          <button className={`nav-item ${active === "settings" ? "active" : ""}`} onClick={() => selectPage("settings")}><Icon name="settings"/><span>Configurações</span></button>
-          <div className="profile-row"><div className="profile-avatar">LF</div><div><strong>Luis Fernando</strong><span>Administrador</span></div><button aria-label="Mais opções"><Icon name="more"/></button></div>
-        </div>
-      </aside>
-
-      {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Fechar menu"/>}
-      <main className="main-area" ref={mainRef}>
-        <header className="topbar">
-          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Icon name="menu"/></button><div className="breadcrumb">Workspace <Icon name="chevron" size={13}/> <strong>{activeLabel}</strong></div></div>
-          <div className="topbar-actions">
-            <label className="search-box"><Icon name="search" size={16}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar no Orbit..."/><kbd>⌘ K</kbd></label>
-            <button className="icon-button notification-button" aria-label="Notificações" onClick={() => setNotice("Você está em dia. Nenhuma notificação nova.")}><Icon name="bell"/><i/></button>
-            <div className="top-avatar">LF</div>
+      {showLoading && (
+        <LoadingDash onComplete={() => setShowLoading(false)} />
+      )}
+      <div className="app-shell">
+      
+        <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
+          <button className="brand" onClick={() => selectPage("overview")} aria-label="Ir para visão geral">
+            <span className="brand-symbol">o<span>.</span></span>
+            <span className="brand-copy"><strong>zailom</strong><small>ORBIT</small></span>
+          </button>
+          <div className="workspace-switch">
+            <div className="workspace-avatar">M</div>
+            <div className="workspace-name"><strong>Minha marca</strong><span>Instagram conectado em breve</span></div>
+            <span className="switch-chevron">⌄</span>
           </div>
-        </header>
+          <nav className="side-nav">
+            {navigation.map(group => <div className="nav-group" key={group.label}>
+              <p className="nav-heading">{group.label}</p>
+              {group.items.map(item => <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => selectPage(item.id)}>
+                <Icon name={item.icon}/><span>{item.label}</span>{item.count && <small>{item.count}</small>}
+              </button>)}
+            </div>)}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="help-card"><div className="help-icon"><Icon name="spark" size={16}/></div><strong>Seu próximo passo</strong><p>Conecte seu Instagram para liberar todo o potencial do Orbit.</p><button onClick={() => setNotice("A conexão oficial com Instagram será ativada na próxima etapa.")}>Conectar conta <Icon name="arrow" size={14}/></button></div>
+            <button className={`nav-item ${active === "settings" ? "active" : ""}`} onClick={() => selectPage("settings")}><Icon name="settings"/><span>Configurações</span></button>
+            <div className="profile-row"><div className="profile-avatar">LF</div><div><strong>Luis Fernando</strong><span>Administrador</span></div><button aria-label="Mais opções"><Icon name="more"/></button></div>
+          </div>
+        </aside>
 
-        <div className="page-content">
-          {active === "overview" ? <>
-            <section className="welcome-row"><div><div className="eyebrow"><span className="live-dot"/> SEU PAINEL DE CONTROLE</div><h1>Bom dia, Luis <span>✳</span></h1><p>Acompanhe sua presença digital em um só lugar.</p></div><button className="primary-button" onClick={createPost}><Icon name="plus" size={17}/> Criar publicação</button></section>
-            <section className="connect-banner"><div className="connect-symbol"><Icon name="instagram" size={23}/></div><div className="connect-copy"><strong>Seu Instagram ainda não está conectado</strong><span>Conecte uma conta profissional para começar a publicar, acompanhar métricas e gerenciar mensagens.</span></div><button onClick={() => setNotice("A integração OAuth do Instagram será implementada na próxima etapa.")}>Conectar Instagram <Icon name="arrow" size={15}/></button><button className="banner-close" aria-label="Fechar aviso" onClick={e => (e.currentTarget.parentElement as HTMLElement).remove()}><Icon name="close" size={16}/></button></section>
-            <section className="section-heading"><div><h2>Visão geral</h2><p>Um resumo do que está acontecendo com seu perfil.</p></div><div className="period-select">{["7 dias", "30 dias", "90 dias"].map(value => <button key={value} className={period === value ? "selected" : ""} onClick={() => setPeriod(value)}>{value}</button>)}</div></section>
-            <section className="metric-grid">
-              <article className="metric-card"><div className="metric-top"><span>Alcance</span><span className="metric-icon mint"><Icon name="eye" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Últimos {period.toLowerCase()}</small></div></article>
-              <article className="metric-card"><div className="metric-top"><span>Engajamento</span><span className="metric-icon peach"><Icon name="heart" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Taxa de interação</small></div></article>
-              <article className="metric-card"><div className="metric-top"><span>Novos seguidores</span><span className="metric-icon lilac"><Icon name="chart" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Crescimento do perfil</small></div></article>
-              <article className="metric-card"><div className="metric-top"><span>Publicações</span><span className="metric-icon gold"><Icon name="layers" size={17}/></span></div><strong>03</strong><div className="metric-foot"><span className="positive-pill">1 publicado</span><small> neste período</small></div></article>
-            </section>
+        {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Fechar menu"/>}
+        <main className="main-area">
+          <header className="topbar">
+            <div className="topbar-left"><button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Icon name="menu"/></button><div className="breadcrumb">Workspace <Icon name="chevron" size={13}/> <strong>{activeLabel}</strong></div></div>
+            <div className="topbar-actions">
+              <label className="search-box"><Icon name="search" size={16}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar no Orbit..."/><kbd>⌘ K</kbd></label>
+              <button className="icon-button notification-button" aria-label="Notificações" onClick={() => setNotice("Você está em dia. Nenhuma notificação nova.")}><Icon name="bell"/><i/></button>
+              <div className="top-avatar">LF</div>
+            </div>
+          </header>
 
-            <section className="dashboard-grid">
-              <div className="panel performance-panel"><div className="panel-heading"><div><h3>Desempenho</h3><p>Alcance e interações ao longo do tempo</p></div><button className="subtle-button" onClick={() => selectPage("analytics")}>Ver análises <Icon name="arrow" size={14}/></button></div><div className="chart-empty"><div className="chart-illustration"><div className="chart-line"><span/><span/><span/><span/><span/><span/><span/></div><div className="chart-axis"><i/><i/><i/><i/></div></div><strong>Seus dados vão aparecer aqui</strong><span>Conecte seu Instagram para visualizar o desempenho do perfil.</span></div></div>
-              <div className="panel upcoming-panel"><div className="panel-heading"><div><h3>Próximas publicações</h3><p>O que vem pela frente</p></div><button className="round-link" onClick={() => selectPage("calendar")}><Icon name="arrow" size={15}/></button></div><div className="upcoming-list">{upcoming.map(item => <div className="upcoming-item" key={item.day}><div className="date-tile"><strong>{item.day}</strong><span>{item.month}</span></div><div className="upcoming-info"><strong>{item.title}</strong><span>{item.type} · {item.time}</span></div><span className={`post-thumb ${item.tone}`}/></div>)}</div><button className="text-link" onClick={() => selectPage("calendar")}>Abrir calendário <Icon name="arrow" size={14}/></button></div>
-            </section>
+          <div className="page-content">
+            {active === "overview" ? <>
+              <section className="welcome-row"><div><div className="eyebrow"><span className="live-dot"/> SEU PAINEL DE CONTROLE</div><h1>Bom dia, Luis <span>✳</span></h1><p>Acompanhe sua presença digital em um só lugar.</p></div><button className="primary-button" onClick={createPost}><Icon name="plus" size={17}/> Criar publicação</button></section>
+              <section className="connect-banner"><div className="connect-symbol"><Icon name="instagram" size={23}/></div><div className="connect-copy"><strong>Seu Instagram ainda não está conectado</strong><span>Conecte uma conta profissional para começar a publicar, acompanhar métricas e gerenciar mensagens.</span></div><button onClick={() => setNotice("A integração OAuth do Instagram será implementada na próxima etapa.")}>Conectar Instagram <Icon name="arrow" size={15}/></button><button className="banner-close" aria-label="Fechar aviso" onClick={e => (e.currentTarget.parentElement as HTMLElement).remove()}><Icon name="close" size={16}/></button></section>
+              <section className="section-heading"><div><h2>Visão geral</h2><p>Um resumo do que está acontecendo com seu perfil.</p></div><div className="period-select">{["7 dias", "30 dias", "90 dias"].map(value => <button key={value} className={period === value ? "selected" : ""} onClick={() => setPeriod(value)}>{value}</button>)}</div></section>
+              <section className="metric-grid">
+                <article className="metric-card"><div className="metric-top"><span>Alcance</span><span className="metric-icon mint"><Icon name="eye" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Últimos {period.toLowerCase()}</small></div></article>
+                <article className="metric-card"><div className="metric-top"><span>Engajamento</span><span className="metric-icon peach"><Icon name="heart" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Taxa de interação</small></div></article>
+                <article className="metric-card"><div className="metric-top"><span>Novos seguidores</span><span className="metric-icon lilac"><Icon name="chart" size={17}/></span></div><strong>—</strong><div className="metric-foot"><span className="muted-pill">Aguardando conexão</span><small>Crescimento do perfil</small></div></article>
+                <article className="metric-card"><div className="metric-top"><span>Publicações</span><span className="metric-icon gold"><Icon name="layers" size={17}/></span></div><strong>03</strong><div className="metric-foot"><span className="positive-pill">1 publicado</span><small> neste período</small></div></article>
+              </section>
 
-            <section className="panel posts-panel"><div className="panel-heading"><div><h3>Conteúdo recente</h3><p>Acompanhe suas últimas publicações e rascunhos.</p></div><button className="subtle-button" onClick={() => selectPage("content")}>Ver todas <Icon name="arrow" size={14}/></button></div><div className="posts-table"><div className="table-head"><span>PUBLICAÇÃO</span><span>STATUS</span><span>DATA</span><span>CURTIDAS</span><span>ALCANCE</span><span/></div>{filteredPosts.map(post => <div className="post-row" key={post.id}><div className="post-name"><span className={`post-thumb ${post.tone}`}>{post.initials}</span><div><strong>{post.title}</strong><span>{post.type}</span></div></div><div><span className={`status status-${post.status.toLowerCase()}`}><i/>{post.status}</span></div><span className="table-muted">{post.date}</span><span className="table-number">{post.likes}</span><span className="table-number">{post.reach}</span><button className="row-more" aria-label="Mais opções"><Icon name="more"/></button></div>)}{filteredPosts.length === 0 && <div className="no-results">Nenhuma publicação encontrada.</div>}</div></section>
-            <footer className="page-footer"><span>© 2026 Zailom Orbit</span><span>Feito para simplificar sua presença digital <span className="footer-star">✳</span></span></footer>
-          </> : <section className="coming-page"><div className="eyebrow"><span className="live-dot"/> ZAILOM ORBIT</div><h1>{activeLabel}</h1><p>{active === "calendar" ? "Planeje, organize e programe suas publicações." : active === "content" ? "Crie, organize e acompanhe todo o seu conteúdo." : active === "inbox" ? "Todas as conversas e comentários em um só lugar." : active === "automations" ? "Crie fluxos inteligentes para cuidar das interações." : active === "analytics" ? "Entenda seus resultados e descubra novas oportunidades." : "Gerencie sua conta, integrações e preferências."}</p><div className="coming-card"><div className="coming-icon"><Icon name={active === "calendar" ? "calendar" : active === "content" ? "layers" : active === "inbox" ? "inbox" : active === "automations" ? "zap" : active === "analytics" ? "chart" : "settings"} size={24}/></div><h3>Estamos preparando este espaço</h3><span>Esta área faz parte da estrutura do Orbit e será ativada nas próximas etapas do desenvolvimento.</span><button className="primary-button" onClick={() => selectPage("overview")}>Voltar à visão geral <Icon name="arrow" size={15}/></button></div></section>}
-        </div>
-      </main>
-      {notice && <div className="toast"><span className="toast-dot"/>{notice}<button onClick={() => setNotice("")}><Icon name="close" size={15}/></button></div>}
-    </div>
+              <section className="dashboard-grid">
+                <div className="panel performance-panel"><div className="panel-heading"><div><h3>Desempenho</h3><p>Alcance e interações ao longo do tempo</p></div><button className="subtle-button" onClick={() => selectPage("analytics")}>Ver análises <Icon name="arrow" size={14}/></button></div><div className="chart-empty"><div className="chart-illustration"><div className="chart-line"><span/><span/><span/><span/><span/><span/><span/></div><div className="chart-axis"><i/><i/><i/><i/></div></div><strong>Seus dados vão aparecer aqui</strong><span>Conecte seu Instagram para visualizar o desempenho do perfil.</span></div></div>
+                <div className="panel upcoming-panel"><div className="panel-heading"><div><h3>Próximas publicações</h3><p>O que vem pela frente</p></div><button className="round-link" onClick={() => selectPage("calendar")}><Icon name="arrow" size={15}/></button></div><div className="upcoming-list">{upcoming.map(item => <div className="upcoming-item" key={item.day}><div className="date-tile"><strong>{item.day}</strong><span>{item.month}</span></div><div className="upcoming-info"><strong>{item.title}</strong><span>{item.type} · {item.time}</span></div><span className={`post-thumb ${item.tone}`}/></div>)}</div><button className="text-link" onClick={() => selectPage("calendar")}>Abrir calendário <Icon name="arrow" size={14}/></button></div>
+              </section>
+
+              <section className="panel posts-panel"><div className="panel-heading"><div><h3>Conteúdo recente</h3><p>Acompanhe suas últimas publicações e rascunhos.</p></div><button className="subtle-button" onClick={() => selectPage("content")}>Ver todas <Icon name="arrow" size={14}/></button></div><div className="posts-table"><div className="table-head"><span>PUBLICAÇÃO</span><span>STATUS</span><span>DATA</span><span>CURTIDAS</span><span>ALCANCE</span><span/></div>{filteredPosts.map(post => <div className="post-row" key={post.id}><div className="post-name"><span className={`post-thumb ${post.tone}`}>{post.initials}</span><div><strong>{post.title}</strong><span>{post.type}</span></div></div><div><span className={`status status-${post.status.toLowerCase()}`}><i/>{post.status}</span></div><span className="table-muted">{post.date}</span><span className="table-number">{post.likes}</span><span className="table-number">{post.reach}</span><button className="row-more" aria-label="Mais opções"><Icon name="more"/></button></div>)}{filteredPosts.length === 0 && <div className="no-results">Nenhuma publicação encontrada.</div>}</div></section>
+              <footer className="page-footer"><span>© 2026 Zailom Orbit</span><span>Feito para simplificar sua presença digital <span className="footer-star">✳</span></span></footer>
+            </> : <section className="coming-page"><div className="eyebrow"><span className="live-dot"/> ZAILOM ORBIT</div><h1>{activeLabel}</h1><p>{active === "calendar" ? "Planeje, organize e programe suas publicações." : active === "content" ? "Crie, organize e acompanhe todo o seu conteúdo." : active === "inbox" ? "Todas as conversas e comentários em um só lugar." : active === "automations" ? "Crie fluxos inteligentes para cuidar das interações." : active === "analytics" ? "Entenda seus resultados e descubra novas oportunidades." : "Gerencie sua conta, integrações e preferências."}</p><div className="coming-card"><div className="coming-icon"><Icon name={active === "calendar" ? "calendar" : active === "content" ? "layers" : active === "inbox" ? "inbox" : active === "automations" ? "zap" : active === "analytics" ? "chart" : "settings"} size={24}/></div><h3>Estamos preparando este espaço</h3><span>Esta área faz parte da estrutura do Orbit e será ativada nas próximas etapas do desenvolvimento.</span><button className="primary-button" onClick={() => selectPage("overview")}>Voltar à visão geral <Icon name="arrow" size={15}/></button></div></section>}
+          </div>
+        </main>
+        {notice && <div className="toast"><span className="toast-dot"/>{notice}<button onClick={() => setNotice("")}><Icon name="close" size={15}/></button></div>}
+      </div>
     </>
   );
 }
