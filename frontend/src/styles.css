@@ -38,3 +38,8 @@
 @keyframes orbit-panel-reveal{0%{opacity:0;transform:scale(.986)}65%{opacity:1;transform:scale(1.004)}100%{opacity:1;transform:scale(1)}}
 @media(max-width:800px){@keyframes intro-brand-flight{0%{left:50%;top:50%;transform:translate(-50%,-50%) scale(1);opacity:0}12%{opacity:1}72%{left:56px;top:30px;transform:translate(-50%,-50%) scale(.42);opacity:1}100%{left:56px;top:30px;transform:translate(-50%,-50%) scale(.42);opacity:0}}}
 @media(prefers-reduced-motion:reduce){.intro-screen{animation:intro-screen-out .01ms linear .01ms forwards}.intro-brand{animation:none;opacity:0}.app-shell{animation:none;opacity:1;transform:none}}
+
+/* O card principal ganha presença depois que a marca conclui o movimento. */
+.main-area{transform:scale(.988);transform-origin:center;animation:orbit-content-card-reveal .76s cubic-bezier(.2,.75,.2,1) 1.32s forwards}
+@keyframes orbit-content-card-reveal{0%{transform:scale(.988)}68%{transform:scale(1.006)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.main-area{animation:none;transform:none}}
