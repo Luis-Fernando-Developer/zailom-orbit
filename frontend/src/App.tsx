@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import gsap from "gsap";
 
 type IconName = "grid" | "calendar" | "layers" | "inbox" | "zap" | "chart" | "settings" | "search" | "bell" | "plus" | "chevron" | "more" | "instagram" | "arrow" | "clock" | "heart" | "message" | "eye" | "send" | "filter" | "spark" | "menu" | "close";
 
@@ -50,6 +51,29 @@ const upcoming = [
 ];
 
 export default function App() {
+  const introRef = useRef<HTMLDivElement>(null);
+  const brandRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const intro = introRef.current, brand = brandRef.current, shell = shellRef.current, main = mainRef.current;
+    if (!intro || !brand || !shell || !main) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) { gsap.set(intro, { display: "none" }); gsap.set([shell, main], { opacity: 1, scale: 1 }); return; }
+    const ctx = gsap.context(() => {
+      const mobile = window.matchMedia("(max-width: 800px)").matches;
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" }, onComplete: () => gsap.set(intro, { autoAlpha: 0, display: "none" }) });
+      gsap.set(brand, { xPercent: -50, yPercent: -50, scale: .82, autoAlpha: 0, left: "50%", top: "50%" });
+      gsap.set(shell, { autoAlpha: 0, scale: .986 }); gsap.set(main, { scale: .988, transformOrigin: "center" });
+      timeline.to(brand, { autoAlpha: 1, scale: 1, duration: .35 })
+        .to(brand, { left: mobile ? 56 : 52, top: mobile ? 30 : 37, scale: mobile ? .42 : .48, autoAlpha: 1, duration: 1.05, ease: "power2.inOut" })
+        .to(shell, { autoAlpha: 1, scale: 1.004, duration: .55 }, "-=.35")
+        .to(main, { scale: 1.006, duration: .42 }, "-=.25")
+        .to([shell, main], { scale: 1, duration: .28, ease: "power2.out" }, "-=.18")
+        .to(brand, { autoAlpha: 0, duration: .16 }, "-=.2");
+    }, intro);
+    return () => ctx.revert();
+  }, []);
   const [active, setActive] = useState("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [period, setPeriod] = useState("7 dias");
@@ -69,7 +93,7 @@ export default function App() {
           <span className="intro-copy"><strong>zailom</strong><small>ORBIT</small></span>
         </div>
       </div>
-      <div className="app-shell">
+      <div className="app-shell" ref={shellRef}>
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <button className="brand" onClick={() => selectPage("overview")} aria-label="Ir para visão geral">
           <span className="brand-symbol">o<span>.</span></span>
@@ -96,7 +120,7 @@ export default function App() {
       </aside>
 
       {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Fechar menu"/>}
-      <main className="main-area">
+      <main className="main-area" ref={mainRef}>
         <header className="topbar">
           <div className="topbar-left"><button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Icon name="menu"/></button><div className="breadcrumb">Workspace <Icon name="chevron" size={13}/> <strong>{activeLabel}</strong></div></div>
           <div className="topbar-actions">
