@@ -62,7 +62,14 @@ export default function App() {
   const filteredPosts = posts.filter(post => post.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="app-shell">
+    <>
+      <div className="intro-screen" aria-hidden="true">
+        <div className="intro-brand">
+          <span className="intro-symbol">o<span>.</span></span>
+          <span className="intro-copy"><strong>zailom</strong><small>ORBIT</small></span>
+        </div>
+      </div>
+      <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <button className="brand" onClick={() => selectPage("overview")} aria-label="Ir para visão geral">
           <span className="brand-symbol">o<span>.</span></span>
@@ -123,5 +130,6 @@ export default function App() {
       </main>
       {notice && <div className="toast"><span className="toast-dot"/>{notice}<button onClick={() => setNotice("")}><Icon name="close" size={15}/></button></div>}
     </div>
+    </>
   );
 }
