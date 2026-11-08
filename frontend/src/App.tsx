@@ -87,8 +87,8 @@ export default function App() {
 
   return (
     <>
-      <div className="intro-screen" aria-hidden="true">
-        <div className="intro-brand">
+      <div className="intro-screen" ref={introRef} aria-hidden="true">
+        <div className="intro-brand" ref={brandRef}>
           <span className="intro-symbol">o<span>.</span></span>
           <span className="intro-copy"><strong>zailom</strong><small>ORBIT</small></span>
         </div>
