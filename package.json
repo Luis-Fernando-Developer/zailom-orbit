@@ -10,7 +10,8 @@
     "dev:frontend": "npm run dev --workspace @zailom-orbit/frontend",
     "dev:backend": "npm run dev --workspace @zailom-orbit/backend",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev --workspace @zailom-orbit/frontend"
   },
   "engines": {
     "node": ">=22"
