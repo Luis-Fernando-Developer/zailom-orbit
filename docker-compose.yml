@@ -32,5 +32,5 @@ services:
       start_period: 15s
 
 networks:
-  bookingZailom_net:
+  zailomOrbit_net:
     external: true
