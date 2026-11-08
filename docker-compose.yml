@@ -1,0 +1,36 @@
+services:
+  orbit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zailom-orbit:latest
+    container_name: zailom-orbit
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+    networks:
+      - bookingZailom_net
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=bookingZailom_net
+      - traefik.http.routers.zailom-orbit.rule=Host(`orbit.zailom.com`)
+      - traefik.http.routers.zailom-orbit.entrypoints=websecure
+      - traefik.http.routers.zailom-orbit.tls=true
+      - traefik.http.routers.zailom-orbit.service=zailom-orbit
+      - traefik.http.routers.zailom-orbit-api.rule=Host(`api-orbit.zailom.com`)
+      - traefik.http.routers.zailom-orbit-api.entrypoints=websecure
+      - traefik.http.routers.zailom-orbit-api.tls=true
+      - traefik.http.routers.zailom-orbit-api.service=zailom-orbit
+      - traefik.http.services.zailom-orbit.loadbalancer.server.port=3001
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  bookingZailom_net:
+    external: true
