@@ -1,3 +1,4 @@
+@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 :root{font-family:'DM Sans',sans-serif;color:#e7efeb;background:#071b16;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;--bg:#071b16;--panel:#10251f;--panel-2:#132a23;--line:rgba(191,220,204,.09);--muted:#82988d;--soft:#a9bbb1;--mint:#a8e0c2;--green:#4b9c75}
@@ -24,22 +25,12 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
 
-/* Abertura do Orbit: a marca conduz a entrada e o painel se revela em seguida. */
-.intro-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 45%,rgba(35,91,62,.22),transparent 42%),#061710;animation:intro-screen-out .55s ease 1.72s forwards;pointer-events:none}
-.intro-brand{position:absolute;left:50%;top:50%;display:flex;align-items:center;gap:12px;transform:translate(-50%,-50%);animation:intro-brand-flight 1.55s cubic-bezier(.2,.78,.22,1) .12s forwards;color:#eaf5ee;white-space:nowrap}
-.intro-symbol{font:800 56px/1 Manrope,sans-serif;letter-spacing:-8px;color:#d9f3e2}
-.intro-symbol span{color:#74bd91}
-.intro-copy{display:flex;flex-direction:column;gap:1px}
-.intro-copy strong{font:800 23px Manrope,sans-serif;letter-spacing:-1px}
-.intro-copy small{font:600 9px 'DM Sans',sans-serif;letter-spacing:4px;color:#7f9e8b}
-.app-shell{opacity:0;transform:scale(.986);transform-origin:center;animation:orbit-panel-reveal .82s cubic-bezier(.2,.75,.2,1) 1.28s forwards}
-@keyframes intro-brand-flight{0%{left:50%;top:50%;transform:translate(-50%,-50%) scale(1);opacity:0}12%{opacity:1}72%{left:52px;top:37px;transform:translate(-50%,-50%) scale(.48);opacity:1}100%{left:52px;top:37px;transform:translate(-50%,-50%) scale(.48);opacity:0}}
-@keyframes intro-screen-out{to{opacity:0;visibility:hidden}}
-@keyframes orbit-panel-reveal{0%{opacity:0;transform:scale(.986)}65%{opacity:1;transform:scale(1.004)}100%{opacity:1;transform:scale(1)}}
-@media(max-width:800px){@keyframes intro-brand-flight{0%{left:50%;top:50%;transform:translate(-50%,-50%) scale(1);opacity:0}12%{opacity:1}72%{left:56px;top:30px;transform:translate(-50%,-50%) scale(.42);opacity:1}100%{left:56px;top:30px;transform:translate(-50%,-50%) scale(.42);opacity:0}}}
-@media(prefers-reduced-motion:reduce){.intro-screen{animation:intro-screen-out .01ms linear .01ms forwards}.intro-brand{animation:none;opacity:0}.app-shell{animation:none;opacity:1;transform:none}}
 
-/* O card principal ganha presença depois que a marca conclui o movimento. */
-.main-area{transform:scale(.988);transform-origin:center;animation:orbit-content-card-reveal .76s cubic-bezier(.2,.75,.2,1) 1.32s forwards}
-@keyframes orbit-content-card-reveal{0%{transform:scale(.988)}68%{transform:scale(1.006)}100%{transform:scale(1)}}
-@media(prefers-reduced-motion:reduce){.main-area{animation:none;transform:none}}
+/* GSAP controla a sequência de entrada; CSS mantém apenas o estado inicial. */
+.intro-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 45%,rgba(35,91,62,.22),transparent 42%),#061710;pointer-events:none}
+.intro-brand{position:absolute;left:50%;top:50%;display:flex;align-items:center;gap:12px;transform:translate(-50%,-50%);color:#eaf5ee;white-space:nowrap}
+.intro-symbol{font:800 56px/1 Manrope,sans-serif;letter-spacing:-8px;color:#d9f3e2}.intro-symbol span{color:#74bd91}
+.intro-copy{display:flex;flex-direction:column;gap:1px}.intro-copy strong{font:800 23px Manrope,sans-serif;letter-spacing:-1px}.intro-copy small{font:600 9px 'DM Sans',sans-serif;letter-spacing:4px;color:#7f9e8b}
+.app-shell{opacity:0;transform:scale(.986);transform-origin:center}
+@media(max-width:800px){.intro-brand{top:50%}}
+@media(prefers-reduced-motion:reduce){.intro-screen{display:none!important}.app-shell{opacity:1!important;transform:none!important}}
