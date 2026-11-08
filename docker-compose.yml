@@ -11,10 +11,10 @@ services:
       PORT: 3001
       HOST: 0.0.0.0
     networks:
-      - bookingZailom_net
+      - zailomOrbit_net
     labels:
       - traefik.enable=true
-      - traefik.docker.network=bookingZailom_net
+      - traefik.docker.network=zailomOrbit_net
       - traefik.http.routers.zailom-orbit.rule=Host(`orbit.zailom.com`)
       - traefik.http.routers.zailom-orbit.entrypoints=websecure
       - traefik.http.routers.zailom-orbit.tls=true
