@@ -10,8 +10,15 @@ services:
       NODE_ENV: production
       PORT: 3001
       HOST: 0.0.0.0
+      TRUST_PROXY: "true"
+      APP_ORIGIN: ${APP_ORIGIN:-https://orbit.zailom.com}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-orbit}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD in the .env file}@postgres:5432/${POSTGRES_DB:-orbit}?schema=public
     networks:
       - zailomOrbit_net
+      - orbit_data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
     labels:
       - traefik.enable=true
       - traefik.docker.network=zailomOrbit_net
@@ -31,6 +38,29 @@ services:
       retries: 3
       start_period: 15s
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: zailom-orbit-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orbit}
+      POSTGRES_DB: ${POSTGRES_DB:-orbit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD in the .env file}
+    volumes:
+      - orbit_postgres_data:/var/lib/postgresql/data
+    networks:
+      - orbit_data_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  orbit_postgres_data:
+
 networks:
   zailomOrbit_net:
     external: true
+  orbit_data_net:
+    internal: true
