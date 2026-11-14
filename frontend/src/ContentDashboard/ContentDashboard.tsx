@@ -52,7 +52,7 @@ export default function ContentDashboard() {
       )}
 
       {showLoading && authStatus === "authenticated" && (
-        <div className="w-full p-8">
+        <div className="w-full p-0 lg:p-8">
           <EffectCardScale onSignOut={handleSignedOut} />
         </div>
       )}
