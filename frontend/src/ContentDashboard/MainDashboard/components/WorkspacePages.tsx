@@ -619,7 +619,7 @@ function CalendarPage() {
                       setError('')
                     }} />
                   </label>
-                  {editFormatRule.maxMedia > 1 && <span className="text-[10px] text-[#8fa99a]">Este formato usa múltiplas mídias. Gerencie a sequência completa na página Publicações.</span>}
+                  {(editFormatRule.maxMedia > 1 || Boolean(editingPost.mediaItems?.length)) && <span className="text-[10px] text-[#8fa99a]">Gerencie ou substitua as mídias desta publicação na página Publicações.</span>}
                   {editingPost.mediaName && <button className="glass-button self-start" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
                   {removeEditMedia && <span className="text-xs text-amber-200">A mídia atual será removida.</span>}
                 </div>
