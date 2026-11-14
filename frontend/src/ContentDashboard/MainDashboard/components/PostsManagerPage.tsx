@@ -329,12 +329,17 @@ export default function PostsManagerPage() {
     setError('')
     setNotice('')
     try {
-      const saved = editingId
-        ? await updatePost(editingId, payload)
-        : await createPost(payload)
+      const wasEditing = Boolean(editingId)
+      const initialPayload: PostInput = selectedFiles.length > 0
+        ? { ...payload, status: 'DRAFT', scheduledAt: null }
+        : payload
+      let saved = wasEditing
+        ? await updatePost(editingId!, initialPayload)
+        : await createPost(initialPayload)
 
+      setEditingId(saved.id)
       setPosts((current) => {
-        const next = editingId
+        const next = wasEditing
           ? current.map((post) => post.id === saved.id ? saved : post)
           : [saved, ...current]
         return next.sort((a, b) => {
@@ -348,15 +353,15 @@ export default function PostsManagerPage() {
       if (selectedFiles.length > 0) {
         try {
           await uploadPostMediaBatch(saved.id, selectedFiles)
-          setPosts(await getPosts())
+          saved = await updatePost(saved.id, payload)
+          setPosts((current) => current.map((post) => post.id === saved.id ? saved : post))
         } catch (uploadError) {
-          setEditingId(saved.id)
-          setError(uploadError instanceof Error ? uploadError.message : 'A publicação foi salva, mas o envio das mídias falhou.')
+          setError(uploadError instanceof Error ? uploadError.message : 'A publicação foi salva como rascunho, mas não foi possível concluir o envio das mídias.')
           return
         }
       }
 
-      setNotice(editingId ? 'Publicação atualizada com sucesso.' : 'Publicação criada com sucesso.')
+      setNotice(wasEditing ? 'Publicação atualizada com sucesso.' : 'Publicação criada com sucesso.')
       setIsFormOpen(false)
       setEditingId(null)
       setForm(emptyForm)
