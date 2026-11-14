@@ -8,7 +8,7 @@ import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } fr
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const app = Fastify({ logger: true, trustProxy: process.env.TRUST_PROXY === "true" });
+const app = Fastify({ logger: true, trustProxy: process.env.TRUST_PROXY === "true", bodyLimit: 12 * 1024 * 1024 });
 const prisma = new PrismaClient();
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -26,6 +26,7 @@ interface AuthenticatedUser {
 
 interface PostInput {
   title: string;
+  caption: string;
   platform: SocialPlatform;
   format: PostFormat;
   status: PostStatus;
@@ -140,12 +141,30 @@ function parseScheduledAt(value: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const postSelect = {
+  id: true,
+  title: true,
+  caption: true,
+  mediaName: true,
+  mediaMimeType: true,
+  platform: true,
+  format: true,
+  status: true,
+  scheduledAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.PostSelect;
+
+const allowedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
+const maxMediaBytes = 8 * 1024 * 1024;
+
 const postBodySchema = {
   type: "object",
   additionalProperties: false,
   required: ["title", "platform", "format", "status", "scheduledAt"],
   properties: {
     title: { type: "string", minLength: 1, maxLength: 160 },
+    caption: { type: "string", maxLength: 5000 },
     platform: { type: "string", enum: ["INSTAGRAM", "FACEBOOK", "TIKTOK", "YOUTUBE", "LINKEDIN", "OTHER"] },
     format: { type: "string", enum: ["POST", "STORY", "REEL", "VIDEO", "CAROUSEL", "SHORT", "OTHER"] },
     status: { type: "string", enum: ["DRAFT", "SCHEDULED", "PUBLISHED"] },
@@ -158,6 +177,7 @@ function isPostInput(value: unknown): value is PostInput {
   const post = value as Record<string, unknown>;
   return (
     typeof post.title === "string" &&
+    typeof post.caption === "string" &&
     typeof post.platform === "string" &&
     typeof post.format === "string" &&
     typeof post.status === "string" &&
@@ -347,6 +367,7 @@ app.get("/api/posts", async (request, reply) => {
   }
 
   return prisma.post.findMany({
+    select: postSelect,
     where: {
       workspaceId: user.workspaceId,
       ...(from || to
@@ -374,12 +395,14 @@ app.post<{ Body: PostInput }>(
       await prisma.post.create({
         data: {
           title: request.body.title.trim(),
+          caption: request.body.caption.trim(),
           platform: request.body.platform,
           format: request.body.format,
           status: request.body.status,
           scheduledAt,
           workspaceId: user.workspaceId,
         },
+        select: postSelect,
       }),
     );
   },
@@ -402,6 +425,7 @@ app.patch<{ Params: { id: string }; Body: PostInput }>(
       where: { id: request.params.id, workspaceId: user.workspaceId },
       data: {
         title: request.body.title.trim(),
+        caption: request.body.caption.trim(),
         platform: request.body.platform,
         format: request.body.format,
         status: request.body.status,
@@ -415,9 +439,94 @@ app.patch<{ Params: { id: string }; Body: PostInput }>(
     }
     return prisma.post.findFirst({
       where: { id: request.params.id, workspaceId: user.workspaceId },
+      select: postSelect,
     });
   },
 );
+
+app.post<{
+  Params: { id: string };
+  Body: { fileName: string; mimeType: string; dataBase64: string };
+}>("/api/posts/:id/media", {
+  schema: {
+    body: {
+      type: "object",
+      additionalProperties: false,
+      required: ["fileName", "mimeType", "dataBase64"],
+      properties: {
+        fileName: { type: "string", minLength: 1, maxLength: 180 },
+        mimeType: { type: "string", enum: [...allowedMediaTypes] },
+        dataBase64: { type: "string", minLength: 1, maxLength: 11_184_812 },
+      },
+    },
+  },
+}, async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const { fileName, mimeType, dataBase64 } = request.body;
+  if (!allowedMediaTypes.has(mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) {
+    return reply.code(400).send({
+      error: { code: "INVALID_MEDIA", message: "Envie uma imagem ou vídeo em formato permitido." },
+    });
+  }
+
+  const media = Buffer.from(dataBase64, "base64");
+  if (media.length === 0 || media.length > maxMediaBytes || media.toString("base64") !== dataBase64) {
+    return reply.code(413).send({
+      error: { code: "MEDIA_TOO_LARGE", message: "O arquivo deve ter no máximo 8 MB." },
+    });
+  }
+
+  const result = await prisma.post.updateMany({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    data: { mediaName: fileName.trim(), mediaMimeType: mimeType, mediaData: media },
+  });
+  if (result.count === 0) {
+    return reply.code(404).send({
+      error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
+    });
+  }
+  return reply.code(204).send();
+});
+
+app.get<{ Params: { id: string } }>("/api/posts/:id/media", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const post = await prisma.post.findFirst({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    select: { mediaData: true, mediaMimeType: true, mediaName: true },
+  });
+  if (!post?.mediaData || !post.mediaMimeType) {
+    return reply.code(404).send({
+      error: { code: "MEDIA_NOT_FOUND", message: "Esta publicação não possui mídia." },
+    });
+  }
+
+  reply.header("Content-Type", post.mediaMimeType);
+  reply.header("Content-Length", post.mediaData.length);
+  reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(post.mediaName ?? "orbit-media")}"`);
+  reply.header("Cache-Control", "private, no-store");
+  reply.header("X-Content-Type-Options", "nosniff");
+  return reply.send(Buffer.from(post.mediaData));
+});
+
+app.delete<{ Params: { id: string } }>("/api/posts/:id/media", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const result = await prisma.post.updateMany({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    data: { mediaName: null, mediaMimeType: null, mediaData: null },
+  });
+  if (result.count === 0) {
+    return reply.code(404).send({
+      error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
+    });
+  }
+  return reply.code(204).send();
+});
 
 app.delete<{ Params: { id: string } }>("/api/posts/:id", async (request, reply) => {
   const user = await requireUser(request, reply);
