@@ -23,7 +23,6 @@ import {
   updatePost,
   uploadPostMediaBatch,
   deletePostMediaItem,
-  deletePostMedia,
   getPostMediaItemUrl,
   getPostMediaUrl,
   type ApiPost,
@@ -175,7 +174,9 @@ export default function PostsManagerPage() {
       title: post.title,
       caption: post.caption,
       platform: post.platform,
-      format: post.format,
+      format: getAvailableFormats(post.platform).some((item) => item.value === post.format)
+        ? post.format
+        : getAvailableFormats(post.platform)[0].value,
       status: post.status,
       scheduledAt: toLocalDateTime(post.scheduledAt),
     })
