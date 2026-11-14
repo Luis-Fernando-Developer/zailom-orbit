@@ -640,7 +640,11 @@ export default function PostsManagerPage() {
             {!isLoading && visiblePosts.map((post) => (
               <article className="glass-row flex-wrap gap-3" key={post.id}>
                 <div className="post-thumb sage shrink-0 overflow-hidden">
-                  {post.mediaMimeType?.startsWith('video/') ? <Video size={17} /> : post.mediaMimeType?.startsWith('image/') ? <img className="h-full w-full object-cover" src={getPostMediaUrl(post.id)} alt="" /> : <Instagram size={17} />}
+                  {post.mediaItems?.[0] ? (
+                    post.mediaItems[0].mimeType.startsWith('video/')
+                      ? <Video size={17} />
+                      : <img className="h-full w-full object-cover" src={getPostMediaItemUrl(post.id, post.mediaItems[0].id)} alt="" />
+                  ) : post.mediaMimeType?.startsWith('video/') ? <Video size={17} /> : post.mediaMimeType?.startsWith('image/') ? <img className="h-full w-full object-cover" src={getPostMediaUrl(post.id)} alt="" /> : <Instagram size={17} />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <strong className="block truncate">{post.title}</strong>
