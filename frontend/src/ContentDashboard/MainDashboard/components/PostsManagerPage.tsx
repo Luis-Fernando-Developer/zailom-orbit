@@ -293,7 +293,7 @@ export default function PostsManagerPage() {
       scheduledAt = date.toISOString()
     }
 
-    if (totalMediaCount < activeRule.minMedia) {
+    if (form.status !== 'DRAFT' && totalMediaCount < activeRule.minMedia) {
       setError(activeRule.minMedia === 1 ? 'Este formato exige uma mídia.' : `Adicione pelo menos ${activeRule.minMedia} mídias para este formato.`)
       return
     }
