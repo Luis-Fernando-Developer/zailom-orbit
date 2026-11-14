@@ -1256,6 +1256,41 @@ body {
   -webkit-backdrop-filter: blur(22px);
 }
 
+.calendar-week-scroll,
+.calendar-grid-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 215, 193, 0.25) transparent;
+}
+
+.calendar-week-grid,
+.calendar-month-grid {
+  min-width: 620px;
+}
+
+@media (max-width: 700px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendar-week-scroll,
+  .calendar-grid-scroll {
+    margin-right: -4px;
+    padding-bottom: 8px;
+  }
+
+  .calendar-week-grid {
+    min-width: 600px;
+  }
+
+  .calendar-month-grid {
+    min-width: 560px;
+  }
+}
+
 @media (max-width: 900px) {
   .asset-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
