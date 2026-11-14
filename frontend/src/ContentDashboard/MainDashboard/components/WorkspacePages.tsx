@@ -26,7 +26,7 @@ import {
   UsersRound,
   Youtube,
 } from 'lucide-react'
-import { createPost, deletePost, getPosts, updatePost, type ApiPost } from '@/lib/api'
+import { createPost, deletePost, deletePostMedia, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, type ApiPost } from '@/lib/api'
 
 export type WorkspacePage =
   | 'overview'
@@ -244,7 +244,10 @@ function CalendarPage() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week')
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [showForm, setShowForm] = useState(false)
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [editingPost, setEditingPost] = useState<ApiPost | null>(null)
+  const [editMediaFile, setEditMediaFile] = useState<File | null>(null)
+  const [removeEditMedia, setRemoveEditMedia] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editCaption, setEditCaption] = useState('')
   const [editPlatform, setEditPlatform] = useState<ApiPost['platform']>('INSTAGRAM')
@@ -303,6 +306,8 @@ function CalendarPage() {
 
   function openEditPost(post: ApiPost) {
     setEditingPost(post)
+    setEditMediaFile(null)
+    setRemoveEditMedia(false)
     setEditTitle(post.title)
     setEditCaption(post.caption ?? '')
     setEditPlatform(post.platform)
@@ -321,7 +326,7 @@ function CalendarPage() {
       const scheduledAt = editStatus === 'SCHEDULED' && editDateTime
         ? new Date(editDateTime).toISOString()
         : null
-      const updated = await updatePost(editingPost.id, {
+      let updated = await updatePost(editingPost.id, {
         title: editTitle.trim(),
         caption: editCaption,
         platform: editPlatform,
@@ -329,8 +334,13 @@ function CalendarPage() {
         status: editStatus,
         scheduledAt,
       })
+      if (removeEditMedia && editingPost.mediaName) await deletePostMedia(editingPost.id)
+      if (editMediaFile) await uploadPostMedia(editingPost.id, editMediaFile)
+      if (removeEditMedia || editMediaFile) updated = { ...updated, mediaName: editMediaFile?.name ?? (removeEditMedia ? null : updated.mediaName), mediaMimeType: editMediaFile?.type ?? (removeEditMedia ? null : updated.mediaMimeType) }
       setPosts((current) => current.map((post) => post.id === updated.id ? updated : post))
       setEditingPost(null)
+      setEditMediaFile(null)
+      setRemoveEditMedia(false)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível atualizar a publicação.')
     } finally {
@@ -407,6 +417,14 @@ function CalendarPage() {
           </div>
           <label>Título<input required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
           <label>Legenda<textarea value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} /></label>
+          <label>Mídia (imagem ou vídeo)
+            {editingPost.mediaName && !removeEditMedia && !editMediaFile && <span className="block text-xs opacity-70">Arquivo atual: {editingPost.mediaName}</span>}
+            {editingPost.mediaName && !removeEditMedia && <img className="mt-2 max-h-48 rounded-xl object-contain" src={getPostMediaUrl(editingPost.id)} alt="Mídia atual da publicação" />}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
+            {editingPost.mediaName && <button className="glass-button mt-2" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
+            {editMediaFile && <span className="block text-xs opacity-70">Novo arquivo: {editMediaFile.name}</span>}
+            {removeEditMedia && <span className="block text-xs opacity-70">A mídia atual será removida.</span>}
+          </label>
           <label>Rede social<select value={editPlatform} onChange={(event) => setEditPlatform(event.target.value as ApiPost['platform'])}>{Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Formato<select value={editFormat} onChange={(event) => setEditFormat(event.target.value as ApiPost['format'])}>{Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Situação<select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ApiPost['status'])}><option value="DRAFT">Rascunho</option><option value="SCHEDULED">Agendado</option><option value="PUBLISHED">Publicado</option></select></label>
@@ -430,10 +448,10 @@ function CalendarPage() {
               const inMonth = date.getMonth() === selectedDate.getMonth()
               const today = localDateKey(date) === localDateKey(new Date())
               return (
-                <button className={'min-h-24 rounded-xl border p-2 text-left transition hover:bg-white/5 sm:min-h-28 ' + (inMonth ? 'border-white/10' : 'border-transparent opacity-35') + (today ? ' ring-1 ring-emerald-400/60' : '')} key={localDateKey(date)} onClick={() => { setSelectedDate(date); setView('day') }} type="button">
+                <button className={'min-h-24 rounded-xl border p-2 text-left transition hover:bg-white/5 sm:min-h-28 ' + (inMonth ? 'border-white/10' : 'border-transparent opacity-35') + (today ? ' ring-1 ring-emerald-400/60' : '')} key={localDateKey(date)} onClick={() => setSelectedDate(date)} type="button">
                   <span className={'text-xs font-semibold ' + (today ? 'text-emerald-300' : '')}>{date.getDate()}</span>
                   <span className="mt-2 flex flex-col gap-1">
-                    {dayPosts.slice(0, 2).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id} onClick={(event) => { event.stopPropagation(); openEditPost(post) }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.stopPropagation(); openEditPost(post) } }}>{post.title}</span>)}
+                    {dayPosts.slice(0, 2).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
                     {dayPosts.length > 2 && <span className="text-[10px] opacity-60">+{dayPosts.length - 2} publicações</span>}
                   </span>
                 </button>
@@ -457,7 +475,7 @@ function CalendarPage() {
                     <strong className={today ? 'text-emerald-300' : ''}>{date.getDate()}</strong>
                   </span>
                   <span className="mt-2 flex flex-col gap-1">
-                    {dayPosts.slice(0, 3).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id} onClick={(event) => { event.stopPropagation(); openEditPost(post) }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.stopPropagation(); openEditPost(post) } }}>{post.title}</span>)}
+                    {dayPosts.slice(0, 3).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
                     {dayPosts.length > 3 && <span className="text-[10px] opacity-60">+{dayPosts.length - 3}</span>}
                   </span>
                 </button>
@@ -473,7 +491,7 @@ function CalendarPage() {
             <div className="timeline-list">
               {isLoading && <p className="empty-state">Carregando publicações...</p>}
               {!isLoading && selectedPosts.map((post) => (
-                <article className="timeline-item cursor-pointer" key={post.id} onClick={() => openEditPost(post)} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openEditPost(post) }}>
+                <article className="timeline-item" key={post.id}>
                   <time>{post.scheduledAt && new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
                   <span className="timeline-marker" aria-hidden="true" />
                   <div className="glass-row flex-1">
@@ -498,6 +516,22 @@ function CalendarPage() {
           </section>
         </div>
       )}
+      <section className="panel mt-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-semibold">Publicações do dia</h3><p className="text-xs opacity-60">{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(selectedDate)}</p></div>
+          <span className="text-xs opacity-60">{selectedPosts.length} publicação(ões)</span>
+        </div>
+        <div className="content-list">
+          {selectedPosts.map((post) => <button type="button" key={post.id} onClick={() => setSelectedPostId(post.id)} className={'glass-row w-full text-left ' + (selectedPostId === post.id ? 'border border-emerald-400/50 bg-emerald-400/5' : '')}>
+            <span className="post-thumb sage"><ImagePlus size={17} /></span>
+            <span className="min-w-0 flex-1"><strong>{post.title}</strong><span>{postChannel(post)} · {post.scheduledAt ? new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Sem horário'}</span></span>
+            <span className={'status status-' + statusLabels[post.status].toLocaleLowerCase('pt-BR')}>{statusLabels[post.status]}</span>
+            {selectedPostId === post.id && <Check size={16} className="text-emerald-300" />}
+          </button>)}
+          {!isLoading && selectedPosts.length === 0 && <p className="empty-state">Nenhuma publicação para esta data. Selecione outro dia no calendário.</p>}
+        </div>
+        <div className="mt-3 flex justify-end"><button className="glass-button" type="button" disabled={!selectedPosts.some((post) => post.id === selectedPostId)} onClick={() => { const post = selectedPosts.find((item) => item.id === selectedPostId); if (post) openEditPost(post) }}>Editar publicação selecionada</button></div>
+      </section>
     </PageFrame>
   )
 }
