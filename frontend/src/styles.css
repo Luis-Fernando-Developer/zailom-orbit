@@ -1271,6 +1271,10 @@ body {
   min-width: 620px;
 }
 
+.calendar-month-weekdays {
+  min-width: 560px;
+}
+
 @media (max-width: 700px) {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr);
