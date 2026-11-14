@@ -26,7 +26,7 @@ import {
   UsersRound,
   Youtube,
 } from 'lucide-react'
-import { createPost, deletePost, getPosts, type ApiPost } from '@/lib/api'
+import { createPost, deletePost, getPosts, updatePost, type ApiPost } from '@/lib/api'
 
 export type WorkspacePage =
   | 'overview'
@@ -198,6 +198,11 @@ function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+function toLocalDateTime(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
 function defaultScheduleTime(date: Date): string {
   const now = new Date()
   if (localDateKey(date) !== localDateKey(now) || now.getHours() >= 22) return '12:00'
@@ -239,6 +244,13 @@ function CalendarPage() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week')
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [showForm, setShowForm] = useState(false)
+  const [editingPost, setEditingPost] = useState<ApiPost | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editCaption, setEditCaption] = useState('')
+  const [editPlatform, setEditPlatform] = useState<ApiPost['platform']>('INSTAGRAM')
+  const [editFormat, setEditFormat] = useState<ApiPost['format']>('POST')
+  const [editStatus, setEditStatus] = useState<ApiPost['status']>('SCHEDULED')
+  const [editDateTime, setEditDateTime] = useState('')
   const [title, setTitle] = useState('')
   const [scheduleTime, setScheduleTime] = useState(() => defaultScheduleTime(new Date()))
   const [posts, setPosts] = useState<ApiPost[]>([])
@@ -287,6 +299,43 @@ function CalendarPage() {
     else next.setMonth(next.getMonth() + direction)
     setSelectedDate(next)
     setScheduleTime(defaultScheduleTime(next))
+  }
+
+  function openEditPost(post: ApiPost) {
+    setEditingPost(post)
+    setEditTitle(post.title)
+    setEditCaption(post.caption ?? '')
+    setEditPlatform(post.platform)
+    setEditFormat(post.format)
+    setEditStatus(post.status)
+    setEditDateTime(post.scheduledAt ? toLocalDateTime(new Date(post.scheduledAt)) : toLocalDateTime(new Date()))
+    setError('')
+  }
+
+  async function saveEditedPost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editingPost || !editTitle.trim()) return
+    setIsSaving(true)
+    setError('')
+    try {
+      const scheduledAt = editStatus === 'SCHEDULED' && editDateTime
+        ? new Date(editDateTime).toISOString()
+        : null
+      const updated = await updatePost(editingPost.id, {
+        title: editTitle.trim(),
+        caption: editCaption,
+        platform: editPlatform,
+        format: editFormat,
+        status: editStatus,
+        scheduledAt,
+      })
+      setPosts((current) => current.map((post) => post.id === updated.id ? updated : post))
+      setEditingPost(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível atualizar a publicação.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
@@ -350,6 +399,26 @@ function CalendarPage() {
       )}
       {error && <p className="inline-notice mb-3" role="alert">{error}</p>}
 
+      {editingPost && (
+        <form className="panel inline-form mb-4" onSubmit={saveEditedPost}>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <strong>Editar publicação</strong>
+            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Fechar</button>
+          </div>
+          <label>Título<input required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
+          <label>Legenda<textarea value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} /></label>
+          <label>Rede social<select value={editPlatform} onChange={(event) => setEditPlatform(event.target.value as ApiPost['platform'])}>{Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Formato<select value={editFormat} onChange={(event) => setEditFormat(event.target.value as ApiPost['format'])}>{Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Situação<select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ApiPost['status'])}><option value="DRAFT">Rascunho</option><option value="SCHEDULED">Agendado</option><option value="PUBLISHED">Publicado</option></select></label>
+          {editStatus === 'SCHEDULED' && <label>Data e horário<input required type="datetime-local" value={editDateTime} onChange={(event) => setEditDateTime(event.target.value)} /></label>}
+          <div className="flex justify-end gap-2">
+            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Cancelar</button>
+            <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Salvar alterações'}</button>
+          </div>
+        </form>
+      )}
+
+
       {view === 'month' ? (
         <section className="panel">
           <div className="calendar-grid-scroll"><div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60 calendar-month-weekdays">
@@ -364,7 +433,7 @@ function CalendarPage() {
                 <button className={'min-h-24 rounded-xl border p-2 text-left transition hover:bg-white/5 sm:min-h-28 ' + (inMonth ? 'border-white/10' : 'border-transparent opacity-35') + (today ? ' ring-1 ring-emerald-400/60' : '')} key={localDateKey(date)} onClick={() => { setSelectedDate(date); setView('day') }} type="button">
                   <span className={'text-xs font-semibold ' + (today ? 'text-emerald-300' : '')}>{date.getDate()}</span>
                   <span className="mt-2 flex flex-col gap-1">
-                    {dayPosts.slice(0, 2).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
+                    {dayPosts.slice(0, 2).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id} onClick={(event) => { event.stopPropagation(); openEditPost(post) }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.stopPropagation(); openEditPost(post) } }}>{post.title}</span>)}
                     {dayPosts.length > 2 && <span className="text-[10px] opacity-60">+{dayPosts.length - 2} publicações</span>}
                   </span>
                 </button>
@@ -388,7 +457,7 @@ function CalendarPage() {
                     <strong className={today ? 'text-emerald-300' : ''}>{date.getDate()}</strong>
                   </span>
                   <span className="mt-2 flex flex-col gap-1">
-                    {dayPosts.slice(0, 3).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
+                    {dayPosts.slice(0, 3).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id} onClick={(event) => { event.stopPropagation(); openEditPost(post) }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.stopPropagation(); openEditPost(post) } }}>{post.title}</span>)}
                     {dayPosts.length > 3 && <span className="text-[10px] opacity-60">+{dayPosts.length - 3}</span>}
                   </span>
                 </button>
@@ -404,7 +473,7 @@ function CalendarPage() {
             <div className="timeline-list">
               {isLoading && <p className="empty-state">Carregando publicações...</p>}
               {!isLoading && selectedPosts.map((post) => (
-                <article className="timeline-item" key={post.id}>
+                <article className="timeline-item cursor-pointer" key={post.id} onClick={() => openEditPost(post)} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openEditPost(post) }}>
                   <time>{post.scheduledAt && new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
                   <span className="timeline-marker" aria-hidden="true" />
                   <div className="glass-row flex-1">
