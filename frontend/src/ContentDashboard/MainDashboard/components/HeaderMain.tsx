@@ -1,4 +1,3 @@
-import React from 'react'
 import SeachHeaderMain from './SeachHeaderMain'
 
 export default function HeaderMain() {
