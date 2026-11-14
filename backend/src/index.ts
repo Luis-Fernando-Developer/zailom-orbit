@@ -171,7 +171,7 @@ const mediaRules: Record<SocialPlatform, Partial<Record<PostFormat, { mediaTypes
     STORY: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
   },
   FACEBOOK: {
-    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 0, maxMedia: 1 },
     CAROUSEL: { mediaTypes: ["image", "video"], minMedia: 2, maxMedia: 10 },
     VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
     REEL: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
@@ -187,12 +187,12 @@ const mediaRules: Record<SocialPlatform, Partial<Record<PostFormat, { mediaTypes
     SHORT: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
   },
   LINKEDIN: {
-    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 0, maxMedia: 1 },
     VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
-    CAROUSEL: { mediaTypes: ["image"], maxMedia: 20 },
+    CAROUSEL: { mediaTypes: ["image"], minMedia: 2, maxMedia: 20 },
   },
   OTHER: {
-    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 0, maxMedia: 1 },
     CAROUSEL: { mediaTypes: ["image", "video"], minMedia: 2, maxMedia: 10 },
     VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
     STORY: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
@@ -627,6 +627,9 @@ app.post<{
   const existingMediaCount = await prisma.postMedia.count({ where: { postId: post.id } });
   if (existingMediaCount + request.body.files.length > formatRule.maxMedia) {
     return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
+  }
+  if (existingMediaCount + request.body.files.length < formatRule.minMedia) {
+    return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: `Este formato exige pelo menos ${formatRule.minMedia} mídias.` } });
   }
   const lastMedia = await prisma.postMedia.aggregate({ where: { postId: post.id }, _max: { sortOrder: true } });
   const nextSortOrder = (lastMedia._max.sortOrder ?? -1) + 1;
