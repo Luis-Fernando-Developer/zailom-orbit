@@ -163,39 +163,39 @@ const allowedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp", "ima
 const maxMediaBytes = 8 * 1024 * 1024;
 
 type MediaKind = "image" | "video";
-const mediaRules: Record<SocialPlatform, Partial<Record<PostFormat, { mediaTypes: MediaKind[]; maxMedia: number }>>> = {
+const mediaRules: Record<SocialPlatform, Partial<Record<PostFormat, { mediaTypes: MediaKind[]; minMedia: number; maxMedia: number }>>> = {
   INSTAGRAM: {
-    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
-    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
-    REEL: { mediaTypes: ["video"], maxMedia: 1 },
-    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], minMedia: 2, maxMedia: 10 },
+    REEL: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
   },
   FACEBOOK: {
-    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
-    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
-    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
-    REEL: { mediaTypes: ["video"], maxMedia: 1 },
-    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], minMedia: 2, maxMedia: 10 },
+    VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    REEL: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
   },
   TIKTOK: {
-    POST: { mediaTypes: ["image"], maxMedia: 1 },
-    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
-    CAROUSEL: { mediaTypes: ["image"], maxMedia: 35 },
+    POST: { mediaTypes: ["image"], minMedia: 1, maxMedia: 1 },
+    VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image"], minMedia: 2, maxMedia: 35 },
   },
   YOUTUBE: {
-    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
-    SHORT: { mediaTypes: ["video"], maxMedia: 1 },
+    VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    SHORT: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
   },
   LINKEDIN: {
-    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
-    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
     CAROUSEL: { mediaTypes: ["image"], maxMedia: 20 },
   },
   OTHER: {
-    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
-    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
-    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
-    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    POST: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], minMedia: 2, maxMedia: 10 },
+    VIDEO: { mediaTypes: ["video"], minMedia: 1, maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], minMedia: 1, maxMedia: 1 },
   },
 };
 
@@ -446,6 +446,10 @@ app.post<{ Body: PostInput }>(
     if (!user) return;
     if (!isPostInput(request.body) || !mediaRules[request.body.platform]?.[request.body.format]) return sendInvalidPost(reply);
     if (!request.body.title.trim()) return sendInvalidPost(reply);
+    const formatRule = mediaRules[request.body.platform][request.body.format]!;
+    if (request.body.status !== "DRAFT" && formatRule.minMedia > 0) {
+      return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: "Adicione as mídias obrigatórias antes de agendar ou marcar como publicado." } });
+    }
 
     const scheduledAt = parseScheduledAt(request.body.scheduledAt);
     if (request.body.scheduledAt !== null && !scheduledAt) return sendInvalidPost(reply);
@@ -480,6 +484,24 @@ app.patch<{ Params: { id: string }; Body: PostInput }>(
     const scheduledAt = parseScheduledAt(request.body.scheduledAt);
     if (request.body.scheduledAt !== null && !scheduledAt) return sendInvalidPost(reply);
     if (!validateSchedule(reply, request.body.status, scheduledAt)) return;
+
+    const formatRule = mediaRules[request.body.platform][request.body.format]!;
+    const currentMedia = await prisma.postMedia.findMany({
+      where: { postId: request.params.id, post: { workspaceId: user.workspaceId } },
+      select: { mimeType: true },
+    });
+    if (currentMedia.length > formatRule.maxMedia) {
+      return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
+    }
+    if (request.body.status !== "DRAFT" && currentMedia.length < formatRule.minMedia) {
+      return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: "Adicione as mídias obrigatórias antes de agendar ou marcar como publicado." } });
+    }
+    if (currentMedia.some((media) => {
+      const kind = media.mimeType.startsWith("image/") ? "image" : "video";
+      return !formatRule.mediaTypes.includes(kind);
+    })) {
+      return reply.code(400).send({ error: { code: "MEDIA_TYPE_NOT_ALLOWED", message: "Uma mídia existente não é compatível com este formato." } });
+    }
 
     const result = await prisma.post.updateMany({
       where: { id: request.params.id, workspaceId: user.workspaceId },
