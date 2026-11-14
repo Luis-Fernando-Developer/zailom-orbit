@@ -21,8 +21,10 @@ import {
   deletePost,
   getPosts,
   updatePost,
-  uploadPostMedia,
+  uploadPostMediaBatch,
+  deletePostMediaItem,
   deletePostMedia,
+  getPostMediaItemUrl,
   getPostMediaUrl,
   type ApiPost,
   type PostFormat,
@@ -30,6 +32,7 @@ import {
   type PostStatus,
   type SocialPlatform,
 } from '@/lib/api'
+import { getAcceptForRule, getAvailableFormats, getFormatRule, validateMediaFiles } from '@/config/social-platform-rules'
 
 type PostFilter = 'Todas' | 'Rascunho' | 'Agendado' | 'Publicado'
 
@@ -115,8 +118,8 @@ export default function PostsManagerPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [filePreviewUrls, setFilePreviewUrls] = useState<string[]>([])
 
   async function loadPosts() {
     setError('')
@@ -134,14 +137,10 @@ export default function PostsManagerPage() {
   }, [])
 
   useEffect(() => {
-    if (!selectedFile) {
-      setFilePreviewUrl(null)
-      return
-    }
-    const url = URL.createObjectURL(selectedFile)
-    setFilePreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [selectedFile])
+    const urls = selectedFiles.map((file) => URL.createObjectURL(file))
+    setFilePreviewUrls(urls)
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [selectedFiles])
 
   const visiblePosts = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR')
@@ -164,7 +163,7 @@ export default function PostsManagerPage() {
   function openCreateForm() {
     setEditingId(null)
     setForm(emptyForm)
-    setSelectedFile(null)
+    setSelectedFiles([])
     setError('')
     setNotice('')
     setIsFormOpen(true)
@@ -180,7 +179,7 @@ export default function PostsManagerPage() {
       status: post.status,
       scheduledAt: toLocalDateTime(post.scheduledAt),
     })
-    setSelectedFile(null)
+    setSelectedFiles([])
     setError('')
     setNotice('')
     setIsFormOpen(true)
@@ -191,7 +190,51 @@ export default function PostsManagerPage() {
     setIsFormOpen(false)
     setEditingId(null)
     setForm(emptyForm)
-    setSelectedFile(null)
+    setSelectedFiles([])
+  }
+
+  const activeRule = getFormatRule(form.platform, form.format)
+  const existingMedia = editingId ? posts.find((post) => post.id === editingId)?.mediaItems ?? [] : []
+  const legacyMediaCount = editingId && existingMedia.length === 0 && posts.find((post) => post.id === editingId)?.mediaMimeType ? 1 : 0
+  const totalMediaCount = existingMedia.length + legacyMediaCount + selectedFiles.length
+
+  function changePlatform(platform: SocialPlatform) {
+    const formats = getAvailableFormats(platform)
+    setForm((current) => ({
+      ...current,
+      platform,
+      format: formats.some((item) => item.value === current.format) ? current.format : formats[0].value,
+    }))
+    setSelectedFiles([])
+    setError('')
+  }
+
+  function changeFormat(format: PostFormat) {
+    setForm((current) => ({ ...current, format }))
+    setSelectedFiles([])
+    setError('')
+  }
+
+  function moveSelectedFile(index: number, direction: -1 | 1) {
+    setSelectedFiles((current) => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= current.length) return current
+      const next = [...current]
+      ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+      return next
+    })
+  }
+
+  async function handleRemoveExistingMedia(mediaId: string) {
+    if (!editingId) return
+    setError('')
+    try {
+      await deletePostMediaItem(editingId, mediaId)
+      await loadPosts()
+      setNotice('Mídia removida da publicação.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível remover a mídia.')
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -214,6 +257,20 @@ export default function PostsManagerPage() {
         return
       }
       scheduledAt = date.toISOString()
+    }
+
+    if (totalMediaCount < activeRule.minMedia) {
+      setError(activeRule.minMedia === 1 ? 'Este formato exige uma mídia.' : `Adicione pelo menos ${activeRule.minMedia} mídias para este formato.`)
+      return
+    }
+    if (totalMediaCount > activeRule.maxMedia) {
+      setError(`Este formato permite no máximo ${activeRule.maxMedia} mídias.`)
+      return
+    }
+    const selectedFilesError = validateMediaFiles(selectedFiles, { ...activeRule, minMedia: 0, maxMedia: Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount) })
+    if (selectedFilesError) {
+      setError(selectedFilesError)
+      return
     }
 
     const payload: PostInput = {
@@ -245,15 +302,13 @@ export default function PostsManagerPage() {
         })
       })
 
-      if (selectedFile) {
+      if (selectedFiles.length > 0) {
         try {
-          await uploadPostMedia(saved.id, selectedFile)
-          setPosts((current) => current.map((post) => post.id === saved.id
-            ? { ...post, mediaName: selectedFile.name, mediaMimeType: selectedFile.type }
-            : post))
+          await uploadPostMediaBatch(saved.id, selectedFiles)
+          setPosts(await getPosts())
         } catch (uploadError) {
           setEditingId(saved.id)
-          setError(uploadError instanceof Error ? uploadError.message : 'A publicação foi salva, mas o envio da mídia falhou.')
+          setError(uploadError instanceof Error ? uploadError.message : 'A publicação foi salva, mas o envio das mídias falhou.')
           return
         }
       }
@@ -262,25 +317,11 @@ export default function PostsManagerPage() {
       setIsFormOpen(false)
       setEditingId(null)
       setForm(emptyForm)
-      setSelectedFile(null)
+      setSelectedFiles([])
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível salvar a publicação.')
     } finally {
       setIsSaving(false)
-    }
-  }
-
-  async function handleRemoveMedia() {
-    if (!editingId) return
-    setError('')
-    try {
-      await deletePostMedia(editingId)
-      setPosts((current) => current.map((post) => post.id === editingId
-        ? { ...post, mediaName: null, mediaMimeType: null }
-        : post))
-      setNotice('Mídia removida da publicação.')
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Não foi possível remover a mídia.')
     }
   }
 
@@ -372,33 +413,67 @@ export default function PostsManagerPage() {
               </label>
 
               <div className="md:col-span-2">
-                <label className={labelClass}>
-                  Imagem ou vídeo
-                  <span className="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-black/15 px-4 py-6 text-center transition hover:border-[#8fcca0]/50 hover:bg-white/3">
-                    <Upload size={19} className="mb-2 text-[#a8d7b4]" />
-                    <strong className="text-xs text-white/80">{selectedFile ? selectedFile.name : 'Selecionar arquivo'}</strong>
-                    <span className="mt-1 text-[10px] text-white/40">JPG, PNG, WEBP, GIF, MP4 ou WEBM · máximo 8 MB</span>
-                    <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (!file) return
-                      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm'].includes(file.type)) {
-                        setError('Formato não permitido. Escolha uma imagem ou vídeo compatível.')
-                        event.target.value = ''
-                        return
-                      }
-                      if (file.size > 8 * 1024 * 1024) {
-                        setError('O arquivo deve ter no máximo 8 MB.')
-                        event.target.value = ''
-                        return
-                      }
-                      setError('')
-                      setSelectedFile(file)
-                    }} />
-                  </span>
+                <div className={labelClass}>Mídias da publicação</div>
+                <p className="mt-1 text-[11px] text-white/40">{activeRule.hint} {activeRule.maxMedia > 1 ? 'Você pode selecionar vários arquivos de uma vez.' : 'Este formato aceita somente um arquivo.'}</p>
+                <label className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-black/15 px-4 py-6 text-center transition hover:border-[#8fcca0]/50 hover:bg-white/3 ${activeRule.maxMedia === 0 ? 'pointer-events-none opacity-40' : ''}`}>
+                  <Upload size={19} className="mb-2 text-[#a8d7b4]" />
+                  <strong className="text-xs text-white/80">Adicionar mídia</strong>
+                  <span className="mt-1 text-[10px] text-white/40">Até 8 MB por publicação · formatos compatíveis com a rede selecionada</span>
+                  <input className="sr-only" type="file" multiple={activeRule.maxMedia > 1} disabled={activeRule.maxMedia === 0} accept={getAcceptForRule(activeRule)} onChange={(event) => {
+                    const incoming = Array.from(event.target.files ?? [])
+                    if (!incoming.length) return
+                    const remaining = Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount)
+                    const combined = [...selectedFiles, ...incoming]
+                    const validation = validateMediaFiles(combined, { ...activeRule, minMedia: 0, maxMedia: remaining })
+                    if (validation) {
+                      setError(validation)
+                      event.target.value = ''
+                      return
+                    }
+                    setError('')
+                    setSelectedFiles(combined)
+                    event.target.value = ''
+                  }} />
                 </label>
-                {editingId && posts.find((post) => post.id === editingId)?.mediaMimeType && !selectedFile && (
-                  <button className="mt-2 text-xs text-red-300/80 hover:text-red-200" onClick={() => void handleRemoveMedia()} type="button">Remover mídia atual</button>
+                {(existingMedia.length > 0 || legacyMediaCount > 0 || selectedFiles.length > 0) && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {existingMedia.map((media, index) => (
+                      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/20" key={media.id}>
+                        {media.mimeType.startsWith('video/')
+                          ? <div className="flex h-28 items-center justify-center text-white/60"><Video size={24} /></div>
+                          : <img className="h-28 w-full object-cover" src={getPostMediaItemUrl(editingId!, media.id)} alt={media.fileName} />}
+                        <div className="flex items-center justify-between gap-1 p-2">
+                          <span className="min-w-0 truncate text-[10px] text-white/60">{media.fileName}</span>
+                          <button className="text-red-300" type="button" onClick={() => void handleRemoveExistingMedia(media.id)} aria-label={`Remover ${media.fileName}`}><X size={13} /></button>
+                        </div>
+                      </div>
+                    ))}
+                    {legacyMediaCount > 0 && editingId && (
+                      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                        {posts.find((post) => post.id === editingId)?.mediaMimeType?.startsWith('video/')
+                          ? <div className="flex h-28 items-center justify-center text-white/60"><Video size={24} /></div>
+                          : <img className="h-28 w-full object-cover" src={getPostMediaUrl(editingId)} alt="Mídia atual" />}
+                        <span className="block truncate p-2 text-[10px] text-white/60">Mídia existente</span>
+                      </div>
+                    )}
+                    {selectedFiles.map((file, index) => (
+                      <div className="relative overflow-hidden rounded-xl border border-emerald-300/20 bg-emerald-300/5" key={`${file.name}-${file.lastModified}-${index}`}>
+                        {file.type.startsWith('video/')
+                          ? <div className="flex h-28 items-center justify-center text-white/60"><Video size={24} /></div>
+                          : <img className="h-28 w-full object-cover" src={filePreviewUrls[index]} alt={file.name} />}
+                        <div className="flex items-center justify-between gap-1 p-2">
+                          <span className="min-w-0 truncate text-[10px] text-white/60">{file.name}</span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button className="text-white/50 disabled:opacity-20" disabled={index === 0} type="button" onClick={() => moveSelectedFile(index, -1)} aria-label="Mover para a esquerda"><ChevronRight className="rotate-180" size={12} /></button>
+                            <button className="text-white/50 disabled:opacity-20" disabled={index === selectedFiles.length - 1} type="button" onClick={() => moveSelectedFile(index, 1)} aria-label="Mover para a direita"><ChevronRight size={12} /></button>
+                            <button className="text-red-300" type="button" onClick={() => setSelectedFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}><X size={13} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
+                <p className="mt-2 text-right text-[10px] text-white/35">{totalMediaCount}/{activeRule.maxMedia} mídias</p>
               </div>
 
               <div className="md:col-span-2">
@@ -408,9 +483,19 @@ export default function PostsManagerPage() {
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#8fcca0]/15 text-[#a8d7b4]"><Instagram size={14} /></div>
                     <div className="min-w-0"><strong className="block truncate text-xs text-white/85">Sua marca</strong><span className="text-[10px] text-white/35">{platformLabels[form.platform]} · {formatLabels[form.format]}</span></div>
                   </div>
-                  {filePreviewUrl ? (
-                    selectedFile?.type.startsWith('video/') ? <video className="max-h-80 w-full bg-black object-contain" src={filePreviewUrl} controls /> : <img className="max-h-80 w-full bg-black object-contain" src={filePreviewUrl} alt="Prévia da mídia selecionada" />
-                  ) : editingId && posts.find((post) => post.id === editingId)?.mediaMimeType ? (
+                  {filePreviewUrls.length > 0 ? (
+                    <div className={`grid gap-1 ${filePreviewUrls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {filePreviewUrls.map((url, index) => selectedFiles[index]?.type.startsWith('video/')
+                        ? <video className="max-h-80 w-full bg-black object-contain" key={url} src={url} controls />
+                        : <img className="max-h-80 w-full bg-black object-contain" key={url} src={url} alt={`Prévia da mídia ${index + 1}`} />)}
+                    </div>
+                  ) : existingMedia.length > 0 && editingId ? (
+                    <div className={`grid gap-1 ${existingMedia.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {existingMedia.map((media) => media.mimeType.startsWith('video/')
+                        ? <video className="max-h-80 w-full bg-black object-contain" key={media.id} src={getPostMediaItemUrl(editingId, media.id)} controls />
+                        : <img className="max-h-80 w-full bg-black object-contain" key={media.id} src={getPostMediaItemUrl(editingId, media.id)} alt={media.fileName} />)}
+                    </div>
+                  ) : legacyMediaCount > 0 && editingId ? (
                     posts.find((post) => post.id === editingId)?.mediaMimeType?.startsWith('video/')
                       ? <video className="max-h-80 w-full bg-black object-contain" src={getPostMediaUrl(editingId)} controls />
                       : <img className="max-h-80 w-full bg-black object-contain" src={getPostMediaUrl(editingId)} alt="Mídia da publicação" />
@@ -426,15 +511,15 @@ export default function PostsManagerPage() {
 
               <label className={labelClass}>
                 Rede social
-                <select className={inputClass} value={form.platform} onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value as SocialPlatform }))}>
+                <select className={inputClass} value={form.platform} onChange={(event) => changePlatform(event.target.value as SocialPlatform)}>
                   {Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
 
               <label className={labelClass}>
                 Formato
-                <select className={inputClass} value={form.format} onChange={(event) => setForm((current) => ({ ...current, format: event.target.value as PostFormat }))}>
-                  {Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                <select className={inputClass} value={form.format} onChange={(event) => changeFormat(event.target.value as PostFormat)}>
+                  {getAvailableFormats(form.platform).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
 
