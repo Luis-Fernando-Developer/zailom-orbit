@@ -539,20 +539,20 @@ function CalendarPage() {
           onClick={() => setEditingPost(null)}
         >
           <form
-            className="panel inline-form !flex-col !items-stretch flex min-h-0 max-h-[78dvh] w-full max-w-3xl overflow-y-auto overscroll-contain shadow-2xl dashboard-scrollbar sm:max-h-[82dvh]"
+            className="panel inline-form !flex !h-[78dvh] !min-h-0 !max-h-[78dvh] !flex-col !items-stretch !overflow-x-hidden !overflow-y-scroll overscroll-contain w-full max-w-3xl shadow-2xl dashboard-scrollbar sm:!h-[82dvh] sm:!max-h-[82dvh]"
             onSubmit={saveEditedPost}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-post-title"
           >
-            <div className="sticky top-0 z-40 -mx-4 -mt-4 mb-2 flex items-center justify-between gap-3 border-b border-white/10 bg-[rgba(12,28,22,0.98)] px-4 py-3 backdrop-blur-2xl sm:-mx-5 sm:-mt-5 sm:px-5">
+            <div className="sticky top-0 z-40 -mx-4 -mt-4 mb-2 flex flex-none items-center justify-between gap-3 border-b border-white/10 bg-[rgba(12,28,22,0.98)] px-4 py-3 backdrop-blur-2xl sm:-mx-5 sm:-mt-5 sm:px-5">
               <strong id="edit-post-title">Editar publicação</strong>
               <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Fechar</button>
             </div>
             {error && <p className="inline-notice" role="alert">{error}</p>}
 
-            <div className="flex w-full flex-col gap-4">
+            <div className="flex w-full flex-none flex-col gap-4">
               <label className="flex w-full flex-col gap-2">Título
                 <input className="w-full" required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
               </label>
@@ -622,7 +622,7 @@ function CalendarPage() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 z-40 -mx-4 mt-auto flex justify-end gap-2 border-t border-white/10 bg-[rgba(12,28,22,0.98)] px-4 pb-1 pt-3 backdrop-blur-2xl sm:-mx-5 sm:px-5">
+            <div className="sticky bottom-0 z-40 -mx-4 mt-4 flex flex-none justify-end gap-2 border-t border-white/10 bg-[rgba(12,28,22,0.98)] px-4 pb-1 pt-3 backdrop-blur-2xl sm:-mx-5 sm:px-5">
               <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Cancelar</button>
               <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Salvar alterações'}</button>
             </div>
