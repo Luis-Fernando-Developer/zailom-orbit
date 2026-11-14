@@ -66,6 +66,10 @@ model Session {
 model Post {
   id          String         @id @default(cuid())
   title       String
+  caption     String           @default("")
+  mediaName   String?
+  mediaMimeType String?
+  mediaData   Bytes?
   platform    SocialPlatform @default(INSTAGRAM)
   format      PostFormat     @default(POST)
   status      PostStatus     @default(DRAFT)
