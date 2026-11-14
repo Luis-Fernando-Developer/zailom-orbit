@@ -4,6 +4,7 @@ import {
   Bell,
   Check,
   CheckCheck,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -238,6 +239,49 @@ function calendarAddDays(date: Date, amount: number): Date {
   const result = new Date(date)
   result.setDate(result.getDate() + amount)
   return result
+}
+
+function GlassSelect<T extends string>({ value, options, onChange }: {
+  value: T
+  options: Array<{ value: T; label: string }>
+  onChange: (value: T) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = options.find((option) => option.value === value)
+
+  return (
+    <div className="relative w-full">
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="flex min-h-10 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.045] px-3 text-left text-sm text-[#e7efeb] shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-xl transition hover:border-emerald-200/25 hover:bg-white/[0.07] focus:outline-none focus:ring-2 focus:ring-emerald-300/20"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span>{selected?.label ?? 'Selecione'}</span>
+        <ChevronDown className={`transition-transform ${open ? 'rotate-180' : ''}`} size={15} />
+      </button>
+      {open && (
+        <>
+          <button aria-label="Fechar opções" className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} type="button" />
+          <div className="absolute left-0 right-0 top-[calc(100%+7px)] z-30 overflow-hidden rounded-xl border border-white/15 bg-[#10251f]/95 p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl" role="listbox">
+            {options.map((option) => (
+              <button
+                aria-selected={option.value === value}
+                className={`flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition ${option.value === value ? 'bg-emerald-300/15 text-emerald-100' : 'text-[#c5d5cb] hover:bg-white/[0.07] hover:text-white'}`}
+                key={option.value}
+                onClick={() => { onChange(option.value); setOpen(false) }}
+                role="option"
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function CalendarPage() {
@@ -490,7 +534,7 @@ function CalendarPage() {
       )}
       {editingPost && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 backdrop-blur-md sm:p-6"
           role="presentation"
           onClick={() => setEditingPost(null)}
         >
@@ -502,28 +546,83 @@ function CalendarPage() {
             aria-modal="true"
             aria-labelledby="edit-post-title"
           >
-            <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-2 flex items-center justify-between gap-3 border-b border-white/10 bg-[rgba(18,24,22,0.96)] px-4 py-3 backdrop-blur-xl sm:-mx-5 sm:-mt-5 sm:px-5">
+            <div className="sticky top-0 z-40 -mx-4 -mt-4 mb-2 flex items-center justify-between gap-3 border-b border-white/10 bg-[rgba(12,28,22,0.98)] px-4 py-3 backdrop-blur-2xl sm:-mx-5 sm:-mt-5 sm:px-5">
               <strong id="edit-post-title">Editar publicação</strong>
               <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Fechar</button>
             </div>
             {error && <p className="inline-notice" role="alert">{error}</p>}
-            <label className="w-full flex-none">Título<input className="w-full" required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
-            <label className="w-full flex-none">Legenda<textarea className="w-full" value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} /></label>
-            <label className="w-full flex-none">Mídia (imagem ou vídeo)
-              {editingPost.mediaName && !removeEditMedia && !editMediaFile && <span className="block text-xs opacity-70">Arquivo atual: {editingPost.mediaName}</span>}
-              {editingPost.mediaName && !removeEditMedia && (editingPost.mediaMimeType?.startsWith('video/')
-                ? <video className="mt-2 max-h-56 w-full rounded-xl object-contain" src={getPostMediaUrl(editingPost.id)} controls />
-                : <img className="mt-2 max-h-56 rounded-xl object-contain" src={getPostMediaUrl(editingPost.id)} alt="Mídia atual da publicação" />)}
-              <input className="w-full" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
-              {editingPost.mediaName && <button className="glass-button mt-2" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
-              {editMediaFile && <span className="block text-xs opacity-70">Novo arquivo: {editMediaFile.name}</span>}
-              {removeEditMedia && <span className="block text-xs opacity-70">A mídia atual será removida.</span>}
-            </label>
-            <label className="w-full flex-none">Rede social<select className="w-full" value={editPlatform} onChange={(event) => setEditPlatform(event.target.value as ApiPost['platform'])}>{Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="w-full flex-none">Formato<select className="w-full" value={editFormat} onChange={(event) => setEditFormat(event.target.value as ApiPost['format'])}>{Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="w-full flex-none">Situação<select className="w-full" value={editStatus} onChange={(event) => setEditStatus(event.target.value as ApiPost['status'])}><option value="DRAFT">Rascunho</option><option value="SCHEDULED">Agendado</option><option value="PUBLISHED">Publicado</option></select></label>
-            {editStatus === 'SCHEDULED' && <label className="w-full flex-none">Data e horário<input className="w-full" required type="datetime-local" value={editDateTime} onChange={(event) => setEditDateTime(event.target.value)} /></label>}
-            <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
+
+            <div className="flex w-full flex-col gap-4">
+              <label className="flex w-full flex-col gap-2">Título
+                <input className="w-full" required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
+              </label>
+              <label className="flex w-full flex-col gap-2">Legenda
+                <textarea className="w-full" value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} />
+              </label>
+
+              <label className="flex w-full flex-col gap-2">Rede social
+                <GlassSelect
+                  value={editPlatform}
+                  onChange={(value) => setEditPlatform(value)}
+                  options={Object.entries(platformLabels).map(([value, label]) => ({ value: value as ApiPost['platform'], label }))}
+                />
+              </label>
+
+              <div className="grid w-full grid-cols-1 items-start gap-5 sm:grid-cols-[minmax(170px,0.85fr)_minmax(0,1.15fr)]">
+                <div className="flex min-w-0 flex-col gap-3">
+                  <span className="text-xs font-medium text-[#b9c6dd]">Mídia</span>
+                  <div className="flex aspect-square w-full max-w-[220px] items-center justify-center overflow-hidden rounded-2xl border border-dashed border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.018))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                    {editingPost.mediaName && !removeEditMedia && !editMediaFile ? (
+                      editingPost.mediaMimeType?.startsWith('video/') ? (
+                        <video className="h-full w-full object-contain" src={getPostMediaUrl(editingPost.id)} controls />
+                      ) : (
+                        <img className="h-full w-full object-contain" src={getPostMediaUrl(editingPost.id)} alt="Prévia da mídia atual" />
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-center text-[#82988d]">
+                        <ImagePlus size={30} strokeWidth={1.3} />
+                        <span className="text-xs">{editMediaFile ? 'Arquivo selecionado' : 'Prévia da imagem'}</span>
+                        {editMediaFile && <span className="max-w-[180px] truncate px-2 text-[10px] text-emerald-200">{editMediaFile.name}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex w-full flex-col gap-2 text-xs text-[#b9c6dd]">Mídia (imagem ou vídeo)
+                    <input className="w-full min-w-0 text-xs" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
+                  </label>
+                  {editingPost.mediaName && <button className="glass-button self-start" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
+                  {removeEditMedia && <span className="text-xs text-amber-200">A mídia atual será removida.</span>}
+                </div>
+
+                <label className="flex min-w-0 flex-col gap-2">Formato
+                  <GlassSelect
+                    value={editFormat}
+                    onChange={(value) => setEditFormat(value)}
+                    options={Object.entries(formatLabels).map(([value, label]) => ({ value: value as ApiPost['format'], label }))}
+                  />
+                </label>
+              </div>
+
+              <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="flex min-w-0 flex-col gap-2">Situação
+                  <GlassSelect
+                    value={editStatus}
+                    onChange={(value) => setEditStatus(value)}
+                    options={[
+                      { value: 'DRAFT', label: 'Rascunho' },
+                      { value: 'SCHEDULED', label: 'Agendado' },
+                      { value: 'PUBLISHED', label: 'Publicado' },
+                    ]}
+                  />
+                </label>
+                {editStatus === 'SCHEDULED' && (
+                  <label className="flex min-w-0 flex-col gap-2">Data e horário
+                    <input className="w-full min-w-0" required type="datetime-local" value={editDateTime} onChange={(event) => setEditDateTime(event.target.value)} />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 z-40 -mx-4 mt-auto flex justify-end gap-2 border-t border-white/10 bg-[rgba(12,28,22,0.98)] px-4 pb-1 pt-3 backdrop-blur-2xl sm:-mx-5 sm:px-5">
               <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Cancelar</button>
               <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Salvar alterações'}</button>
             </div>
