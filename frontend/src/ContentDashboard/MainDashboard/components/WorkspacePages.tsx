@@ -374,6 +374,7 @@ function CalendarPage() {
       const scheduledAt = editStatus === 'SCHEDULED' && editDateTime
         ? new Date(editDateTime).toISOString()
         : null
+      if (removeEditMedia && editingPost.mediaName) await deletePostMedia(editingPost.id)
       let updated = await updatePost(editingPost.id, {
         title: editTitle.trim(),
         caption: editCaption,
@@ -382,7 +383,6 @@ function CalendarPage() {
         status: editStatus,
         scheduledAt,
       })
-      if (removeEditMedia && editingPost.mediaName) await deletePostMedia(editingPost.id)
       if (editMediaFile) await uploadPostMedia(editingPost.id, editMediaFile)
       if (removeEditMedia || editMediaFile) updated = { ...updated, mediaName: editMediaFile?.name ?? (removeEditMedia ? null : updated.mediaName), mediaMimeType: editMediaFile?.type ?? (removeEditMedia ? null : updated.mediaMimeType) }
       setPosts((current) => current.map((post) => post.id === updated.id ? updated : post))
