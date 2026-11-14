@@ -158,6 +158,25 @@ const postSelect = {
 const allowedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
 const maxMediaBytes = 8 * 1024 * 1024;
 
+function hasExpectedMediaSignature(media: Buffer, mimeType: string): boolean {
+  switch (mimeType) {
+    case "image/jpeg":
+      return media.length >= 3 && media[0] === 0xff && media[1] === 0xd8 && media[2] === 0xff;
+    case "image/png":
+      return media.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"));
+    case "image/webp":
+      return media.length >= 12 && media.toString("ascii", 0, 4) === "RIFF" && media.toString("ascii", 8, 12) === "WEBP";
+    case "image/gif":
+      return ["GIF87a", "GIF89a"].includes(media.toString("ascii", 0, 6));
+    case "video/mp4":
+      return media.length >= 12 && media.toString("ascii", 4, 8) === "ftyp";
+    case "video/webm":
+      return media.subarray(0, 4).equals(Buffer.from("1a45dfa3", "hex"));
+    default:
+      return false;
+  }
+}
+
 const postBodySchema = {
   type: "object",
   additionalProperties: false,
@@ -476,6 +495,12 @@ app.post<{
   if (media.length === 0 || media.length > maxMediaBytes || media.toString("base64") !== dataBase64) {
     return reply.code(413).send({
       error: { code: "MEDIA_TOO_LARGE", message: "O arquivo deve ter no máximo 8 MB." },
+    });
+  }
+
+  if (!hasExpectedMediaSignature(media, mimeType)) {
+    return reply.code(400).send({
+      error: { code: "INVALID_MEDIA_CONTENT", message: "O conteúdo do arquivo não corresponde ao formato informado." },
     });
   }
 
