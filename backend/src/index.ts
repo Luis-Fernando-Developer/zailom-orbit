@@ -563,6 +563,7 @@ app.post<{
     });
   }
 
+  const existingMediaCount = await prisma.postMedia.count({ where: { postId: post.id } });
   const prepared = [];
   let totalBytes = 0;
   for (const [index, file] of request.body.files.entries()) {
@@ -593,7 +594,7 @@ app.post<{
       fileName: file.fileName.trim(),
       mimeType: file.mimeType,
       data,
-      sortOrder: index,
+      sortOrder: existingMediaCount + index,
       postId: post.id,
     });
   }
