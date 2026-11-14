@@ -602,7 +602,7 @@ function CalendarPage() {
                     )}
                   </div>
                   <label className="flex w-full flex-col gap-2 text-xs text-[#b9c6dd]">Mídia
-                    <input className="w-full min-w-0 text-xs" type="file" disabled={editFormatRule.maxMedia > 1} accept={getAcceptForRule(editFormatRule)} onChange={(event) => {
+                    <input className="w-full min-w-0 text-xs" type="file" disabled={editFormatRule.maxMedia > 1 || Boolean(editingPost.mediaItems?.length)} accept={getAcceptForRule(editFormatRule)} onChange={(event) => {
                       const file = event.target.files?.[0] ?? null
                       if (file && !editFormatRule.mediaTypes.includes(file.type.startsWith('image/') ? 'image' : 'video')) {
                         setError('Este formato não aceita o tipo de mídia selecionado.')
