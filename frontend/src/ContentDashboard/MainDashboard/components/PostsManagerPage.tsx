@@ -23,6 +23,7 @@ import {
   updatePost,
   uploadPostMediaBatch,
   deletePostMediaItem,
+  deletePostMedia,
   reorderPostMedia,
   getPostMediaItemUrl,
   getPostMediaUrl,
@@ -262,6 +263,7 @@ export default function PostsManagerPage() {
     setError('')
     try {
       await deletePostMediaItem(editingId, mediaId)
+      if (mediaId.startsWith('legacy_')) await deletePostMedia(editingId)
       await loadPosts()
       setNotice('Mídia removida da publicação.')
     } catch (requestError) {
