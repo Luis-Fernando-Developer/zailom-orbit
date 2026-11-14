@@ -92,13 +92,20 @@ export function getVideoConstraintHint(rule: FormatRule): string | null {
   const limits = rule.video
   if (!limits) return null
   const parts: string[] = []
+  const formatDuration = (seconds: number) => seconds >= 3600 ? (seconds / 3600) + 'h' : seconds >= 60 ? (seconds / 60) + 'min' : seconds + 's'
   if (limits.minDuration !== undefined || limits.maxDuration !== undefined) {
-    const min = limits.minDuration ?? 0
-    const max = limits.maxDuration === undefined ? null : limits.maxDuration
-    parts.push(max === null ? 'duração a partir de ' + min + 's' : 'duração ' + min + 's–' + max + 's')
+    const min = limits.minDuration === undefined ? null : formatDuration(limits.minDuration)
+    const max = limits.maxDuration === undefined ? null : formatDuration(limits.maxDuration)
+    parts.push(min && max ? 'duração ' + min + '–' + max : min ? 'duração a partir de ' + min : 'duração até ' + max)
   }
   if (limits.minWidth || limits.minHeight || limits.maxWidth || limits.maxHeight) {
-    parts.push('resolução mínima ' + (limits.minWidth ?? 0) + '×' + (limits.minHeight ?? 0) + ' px' + (limits.maxWidth || limits.maxHeight ? ', máxima ' + (limits.maxWidth ?? '—') + '×' + (limits.maxHeight ?? '—') + ' px' : ''))
+    const minimum = limits.minWidth && limits.minHeight
+      ? limits.minWidth + '×' + limits.minHeight + ' px'
+      : limits.minWidth ? 'largura de ' + limits.minWidth + ' px' : 'altura de ' + limits.minHeight + ' px'
+    const maximum = limits.maxWidth && limits.maxHeight
+      ? limits.maxWidth + '×' + limits.maxHeight + ' px'
+      : limits.maxWidth ? 'largura de ' + limits.maxWidth + ' px' : limits.maxHeight ? 'altura de ' + limits.maxHeight + ' px' : null
+    parts.push('mínimo ' + minimum + (maximum ? ', máximo ' + maximum : ''))
   }
   if (limits.recommendedRatioLabel) parts.push('proporção recomendada ' + limits.recommendedRatioLabel)
   return parts.join(' · ')
@@ -170,7 +177,7 @@ export async function validateVideoFiles(files: File[], rule: FormatRule): Promi
     const ratio = width / height
     const label = file.name
     if (constraints.minDuration !== undefined && duration < constraints.minDuration) return '"' + label + '": o vídeo precisa ter pelo menos ' + constraints.minDuration + ' segundos.'
-    if (constraints.maxDuration !== undefined && duration > constraints.maxDuration) return '"' + label + '": o limite de duração deste formato é ' + constraints.maxDuration + ' segundos.'
+    if (constraints.maxDuration !== undefined && duration > constraints.maxDuration) return '"' + label + '": o limite de duração deste formato é ' + (constraints.maxDuration >= 60 ? constraints.maxDuration / 60 + ' minuto(s)' : constraints.maxDuration + ' segundo(s)') + '.'
     if (constraints.minWidth !== undefined && width < constraints.minWidth) return '"' + label + '": largura mínima de ' + constraints.minWidth + 'px.'
     if (constraints.minHeight !== undefined && height < constraints.minHeight) return '"' + label + '": altura mínima de ' + constraints.minHeight + 'px.'
     if (constraints.maxWidth !== undefined && width > constraints.maxWidth) return '"' + label + '": largura máxima de ' + constraints.maxWidth + 'px.'
