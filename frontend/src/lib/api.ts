@@ -20,6 +20,15 @@ export interface ApiPost {
   scheduledAt: string | null
   createdAt: string
   updatedAt: string
+  mediaItems?: PostMediaItem[]
+}
+
+export interface PostMediaItem {
+  id: string
+  fileName: string
+  mimeType: string
+  sortOrder: number
+  createdAt: string
 }
 
 export interface PostInput {
@@ -131,6 +140,35 @@ export function updatePost(id: string, input: PostInput): Promise<ApiPost> {
 
 export function deletePost(id: string): Promise<void> {
   return request<void>(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function getPostMediaItemUrl(postId: string, mediaId: string): string {
+  return `${apiBaseUrl}/api/posts/${encodeURIComponent(postId)}/media/${encodeURIComponent(mediaId)}`
+}
+
+export async function uploadPostMediaBatch(id: string, files: File[]): Promise<void> {
+  const encodedFiles = await Promise.all(files.map(async (file) => {
+    const dataBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result
+        if (typeof result !== 'string') return reject(new Error('Não foi possível ler um dos arquivos.'))
+        resolve(result.slice(result.indexOf(',') + 1))
+      }
+      reader.onerror = () => reject(new Error('Não foi possível ler um dos arquivos.'))
+      reader.readAsDataURL(file)
+    })
+    return { fileName: file.name, mimeType: file.type, dataBase64 }
+  }))
+
+  await request<void>(`/api/posts/${encodeURIComponent(id)}/media/batch`, {
+    method: 'POST',
+    body: JSON.stringify({ files: encodedFiles }),
+  })
+}
+
+export function deletePostMediaItem(postId: string, mediaId: string): Promise<void> {
+  return request<void>(`/api/posts/${encodeURIComponent(postId)}/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' })
 }
 
 export function getPostMediaUrl(id: string): string {
