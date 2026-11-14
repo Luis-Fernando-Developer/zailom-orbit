@@ -27,7 +27,8 @@ import {
   UsersRound,
   Youtube,
 } from 'lucide-react'
-import { createPost, deletePost, deletePostMedia, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, type ApiPost } from '@/lib/api'
+import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, type ApiPost } from '@/lib/api'
+import { getAcceptForRule, getAvailableFormats, getFormatRule } from '@/config/social-platform-rules'
 
 export type WorkspacePage =
   | 'overview'
@@ -355,11 +356,14 @@ function CalendarPage() {
     setEditTitle(post.title)
     setEditCaption(post.caption ?? '')
     setEditPlatform(post.platform)
-    setEditFormat(post.format)
+    const availableFormats = getAvailableFormats(post.platform)
+    setEditFormat(availableFormats.some((item) => item.value === post.format) ? post.format : availableFormats[0].value)
     setEditStatus(post.status)
     setEditDateTime(post.scheduledAt ? toLocalDateTime(new Date(post.scheduledAt)) : toLocalDateTime(new Date()))
     setError('')
   }
+
+  const editFormatRule = getFormatRule(editPlatform, editFormat)
 
   async function saveEditedPost(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -563,7 +567,12 @@ function CalendarPage() {
               <label className="flex w-full flex-col gap-2">Rede social
                 <GlassSelect
                   value={editPlatform}
-                  onChange={(value) => setEditPlatform(value)}
+                  onChange={(value) => {
+                    const formats = getAvailableFormats(value)
+                    setEditPlatform(value)
+                    setEditFormat(formats.some((item) => item.value === editFormat) ? editFormat : formats[0].value)
+                    setEditMediaFile(null)
+                  }}
                   options={Object.entries(platformLabels).map(([value, label]) => ({ value: value as ApiPost['platform'], label }))}
                 />
               </label>
@@ -572,7 +581,13 @@ function CalendarPage() {
                 <div className="flex min-w-0 flex-col gap-3">
                   <span className="text-xs font-medium text-[#b9c6dd]">Mídia</span>
                   <div className="flex aspect-square w-full max-w-[220px] items-center justify-center overflow-hidden rounded-2xl border border-dashed border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.018))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                    {editingPost.mediaName && !removeEditMedia && !editMediaFile ? (
+                    {editingPost.mediaItems?.[0] && !editMediaFile ? (
+                      editingPost.mediaItems[0].mimeType.startsWith('video/') ? (
+                        <video className="h-full w-full object-contain" src={getPostMediaItemUrl(editingPost.id, editingPost.mediaItems[0].id)} controls />
+                      ) : (
+                        <img className="h-full w-full object-contain" src={getPostMediaItemUrl(editingPost.id, editingPost.mediaItems[0].id)} alt="Prévia da mídia atual" />
+                      )
+                    ) : editingPost.mediaName && !removeEditMedia && !editMediaFile ? (
                       editingPost.mediaMimeType?.startsWith('video/') ? (
                         <video className="h-full w-full object-contain" src={getPostMediaUrl(editingPost.id)} controls />
                       ) : (
@@ -586,9 +601,25 @@ function CalendarPage() {
                       </div>
                     )}
                   </div>
-                  <label className="flex w-full flex-col gap-2 text-xs text-[#b9c6dd]">Mídia (imagem ou vídeo)
-                    <input className="w-full min-w-0 text-xs" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
+                  <label className="flex w-full flex-col gap-2 text-xs text-[#b9c6dd]">Mídia
+                    <input className="w-full min-w-0 text-xs" type="file" disabled={editFormatRule.maxMedia > 1} accept={getAcceptForRule(editFormatRule)} onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null
+                      if (file && !editFormatRule.mediaTypes.includes(file.type.startsWith('image/') ? 'image' : 'video')) {
+                        setError('Este formato não aceita o tipo de mídia selecionado.')
+                        event.target.value = ''
+                        return
+                      }
+                      if (file && file.size > 8 * 1024 * 1024) {
+                        setError('O arquivo deve ter no máximo 8 MB.')
+                        event.target.value = ''
+                        return
+                      }
+                      setEditMediaFile(file)
+                      setRemoveEditMedia(false)
+                      setError('')
+                    }} />
                   </label>
+                  {editFormatRule.maxMedia > 1 && <span className="text-[10px] text-[#8fa99a]">Este formato usa múltiplas mídias. Gerencie a sequência completa na página Publicações.</span>}
                   {editingPost.mediaName && <button className="glass-button self-start" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
                   {removeEditMedia && <span className="text-xs text-amber-200">A mídia atual será removida.</span>}
                 </div>
@@ -597,7 +628,7 @@ function CalendarPage() {
                   <GlassSelect
                     value={editFormat}
                     onChange={(value) => setEditFormat(value)}
-                    options={Object.entries(formatLabels).map(([value, label]) => ({ value: value as ApiPost['format'], label }))}
+                    options={getAvailableFormats(editPlatform).map((item) => ({ value: item.value, label: item.label }))}
                   />
                 </label>
               </div>
