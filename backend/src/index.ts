@@ -161,7 +161,7 @@ const maxMediaBytes = 8 * 1024 * 1024;
 const postBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "platform", "format", "status", "scheduledAt"],
+  required: ["title", "caption", "platform", "format", "status", "scheduledAt"],
   properties: {
     title: { type: "string", minLength: 1, maxLength: 160 },
     caption: { type: "string", maxLength: 5000 },
@@ -448,6 +448,7 @@ app.post<{
   Params: { id: string };
   Body: { fileName: string; mimeType: string; dataBase64: string };
 }>("/api/posts/:id/media", {
+  config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
   schema: {
     body: {
       type: "object",
