@@ -495,7 +495,7 @@ function CalendarPage() {
           onClick={() => setEditingPost(null)}
         >
           <form
-            className="panel inline-form max-h-[92vh] w-full max-w-2xl overflow-y-auto shadow-2xl"
+            className="panel inline-form flex min-h-[82vh] max-h-[94vh] w-full max-w-2xl flex-col overflow-y-auto shadow-2xl sm:min-h-[86vh]"
             onSubmit={saveEditedPost}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
