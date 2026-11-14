@@ -153,6 +153,10 @@ const postSelect = {
   scheduledAt: true,
   createdAt: true,
   updatedAt: true,
+  mediaItems: {
+    select: { id: true, fileName: true, mimeType: true, sortOrder: true, createdAt: true },
+    orderBy: { sortOrder: "asc" },
+  },
 } satisfies Prisma.PostSelect;
 
 const allowedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
@@ -511,6 +515,133 @@ app.post<{
   if (result.count === 0) {
     return reply.code(404).send({
       error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
+    });
+  }
+  return reply.code(204).send();
+});
+
+app.post<{
+  Params: { id: string };
+  Body: { files: Array<{ fileName: string; mimeType: string; dataBase64: string }> };
+}>("/api/posts/:id/media/batch", {
+  config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  schema: {
+    body: {
+      type: "object",
+      additionalProperties: false,
+      required: ["files"],
+      properties: {
+        files: {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["fileName", "mimeType", "dataBase64"],
+            properties: {
+              fileName: { type: "string", minLength: 1, maxLength: 180 },
+              mimeType: { type: "string", enum: [...allowedMediaTypes] },
+              dataBase64: { type: "string", minLength: 1, maxLength: 11_184_812 },
+            },
+          },
+        },
+      },
+    },
+  },
+}, async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const post = await prisma.post.findFirst({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    select: { id: true },
+  });
+  if (!post) {
+    return reply.code(404).send({
+      error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
+    });
+  }
+
+  const prepared = [];
+  let totalBytes = 0;
+  for (const [index, file] of request.body.files.entries()) {
+    if (!allowedMediaTypes.has(file.mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.dataBase64)) {
+      return reply.code(400).send({
+        error: { code: "INVALID_MEDIA", message: "Um dos arquivos possui formato inválido." },
+      });
+    }
+
+    const data = Buffer.from(file.dataBase64, "base64");
+    totalBytes += data.length;
+    if (
+      data.length === 0 ||
+      data.toString("base64") !== file.dataBase64 ||
+      !hasExpectedMediaSignature(data, file.mimeType)
+    ) {
+      return reply.code(400).send({
+        error: { code: "INVALID_MEDIA_CONTENT", message: "Um dos arquivos não corresponde ao formato informado." },
+      });
+    }
+    if (totalBytes > maxMediaBytes) {
+      return reply.code(413).send({
+        error: { code: "MEDIA_TOO_LARGE", message: "O conjunto de mídias deve ter no máximo 8 MB." },
+      });
+    }
+
+    prepared.push({
+      fileName: file.fileName.trim(),
+      mimeType: file.mimeType,
+      data,
+      sortOrder: index,
+      postId: post.id,
+    });
+  }
+
+  await prisma.postMedia.createMany({ data: prepared });
+  return reply.code(204).send();
+});
+
+app.get<{ Params: { id: string; mediaId: string } }>("/api/posts/:id/media/:mediaId", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const media = await prisma.postMedia.findFirst({
+    where: {
+      id: request.params.mediaId,
+      postId: request.params.id,
+      post: { workspaceId: user.workspaceId },
+    },
+    select: { data: true, mimeType: true, fileName: true },
+  });
+  if (!media) {
+    return reply.code(404).send({
+      error: { code: "MEDIA_NOT_FOUND", message: "Esta mídia não foi encontrada." },
+    });
+  }
+
+  reply.header("Content-Type", media.mimeType);
+  reply.header("Content-Length", media.data.length);
+  reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(media.fileName)}"`);
+  reply.header("Cache-Control", "private, no-store");
+  reply.header("X-Content-Type-Options", "nosniff");
+  return reply.send(Buffer.from(media.data));
+});
+
+app.delete<{ Params: { id: string; mediaId: string } }>("/api/posts/:id/media/:mediaId", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const result = await prisma.postMedia.deleteMany({
+    where: {
+      id: request.params.mediaId,
+      postId: request.params.id,
+      post: { workspaceId: user.workspaceId },
+    },
+  });
+  if (result.count === 0) {
+    return reply.code(404).send({
+      error: { code: "MEDIA_NOT_FOUND", message: "Esta mídia não foi encontrada." },
     });
   }
   return reply.code(204).send();
