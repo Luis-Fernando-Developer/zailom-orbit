@@ -7,6 +7,9 @@ import {
   Edit3,
   FileImage,
   Filter,
+  ImagePlus,
+  Video,
+  Upload,
   Instagram,
   Plus,
   Search,
@@ -18,6 +21,9 @@ import {
   deletePost,
   getPosts,
   updatePost,
+  uploadPostMedia,
+  deletePostMedia,
+  getPostMediaUrl,
   type ApiPost,
   type PostFormat,
   type PostInput,
@@ -33,6 +39,7 @@ interface PostFormState {
   format: PostFormat
   status: PostStatus
   scheduledAt: string
+  caption: string
 }
 
 const emptyForm: PostFormState = {
@@ -41,6 +48,7 @@ const emptyForm: PostFormState = {
   format: 'POST',
   status: 'DRAFT',
   scheduledAt: '',
+  caption: '',
 }
 
 const platformLabels: Record<SocialPlatform, string> = {
@@ -107,6 +115,8 @@ export default function PostsManagerPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
 
   async function loadPosts() {
     setError('')
@@ -122,6 +132,16 @@ export default function PostsManagerPage() {
   useEffect(() => {
     void loadPosts()
   }, [])
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setFilePreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(selectedFile)
+    setFilePreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [selectedFile])
 
   const visiblePosts = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR')
@@ -144,6 +164,7 @@ export default function PostsManagerPage() {
   function openCreateForm() {
     setEditingId(null)
     setForm(emptyForm)
+    setSelectedFile(null)
     setError('')
     setNotice('')
     setIsFormOpen(true)
@@ -153,11 +174,13 @@ export default function PostsManagerPage() {
     setEditingId(post.id)
     setForm({
       title: post.title,
+      caption: post.caption,
       platform: post.platform,
       format: post.format,
       status: post.status,
       scheduledAt: toLocalDateTime(post.scheduledAt),
     })
+    setSelectedFile(null)
     setError('')
     setNotice('')
     setIsFormOpen(true)
@@ -168,6 +191,7 @@ export default function PostsManagerPage() {
     setIsFormOpen(false)
     setEditingId(null)
     setForm(emptyForm)
+    setSelectedFile(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -194,6 +218,7 @@ export default function PostsManagerPage() {
 
     const payload: PostInput = {
       title,
+      caption: form.caption.trim(),
       platform: form.platform,
       format: form.format,
       status: form.status,
@@ -219,14 +244,43 @@ export default function PostsManagerPage() {
           return a.scheduledAt.localeCompare(b.scheduledAt)
         })
       })
+
+      if (selectedFile) {
+        try {
+          await uploadPostMedia(saved.id, selectedFile)
+          setPosts((current) => current.map((post) => post.id === saved.id
+            ? { ...post, mediaName: selectedFile.name, mediaMimeType: selectedFile.type }
+            : post))
+        } catch (uploadError) {
+          setEditingId(saved.id)
+          setError(uploadError instanceof Error ? uploadError.message : 'A publicação foi salva, mas o envio da mídia falhou.')
+          return
+        }
+      }
+
       setNotice(editingId ? 'Publicação atualizada com sucesso.' : 'Publicação criada com sucesso.')
       setIsFormOpen(false)
       setEditingId(null)
       setForm(emptyForm)
+      setSelectedFile(null)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível salvar a publicação.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleRemoveMedia() {
+    if (!editingId) return
+    setError('')
+    try {
+      await deletePostMedia(editingId)
+      setPosts((current) => current.map((post) => post.id === editingId
+        ? { ...post, mediaName: null, mediaMimeType: null }
+        : post))
+      setNotice('Mídia removida da publicação.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível remover a mídia.')
     }
   }
 
@@ -311,6 +365,65 @@ export default function PostsManagerPage() {
                 <input className={inputClass} autoFocus maxLength={160} required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: Lançamento da coleção de verão" />
               </label>
 
+              <label className={`${labelClass} md:col-span-2`}>
+                Legenda
+                <textarea className={inputClass + ' min-h-28 resize-y'} maxLength={5000} value={form.caption} onChange={(event) => setForm((current) => ({ ...current, caption: event.target.value }))} placeholder="Escreva a legenda da sua publicação..." />
+                <span className="mt-1 block text-right text-[10px] text-white/35">{form.caption.length}/5000 caracteres</span>
+              </label>
+
+              <div className="md:col-span-2">
+                <label className={labelClass}>
+                  Imagem ou vídeo
+                  <span className="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-black/15 px-4 py-6 text-center transition hover:border-[#8fcca0]/50 hover:bg-white/3">
+                    <Upload size={19} className="mb-2 text-[#a8d7b4]" />
+                    <strong className="text-xs text-white/80">{selectedFile ? selectedFile.name : 'Selecionar arquivo'}</strong>
+                    <span className="mt-1 text-[10px] text-white/40">JPG, PNG, WEBP, GIF, MP4 ou WEBM · máximo 8 MB</span>
+                    <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) return
+                      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm'].includes(file.type)) {
+                        setError('Formato não permitido. Escolha uma imagem ou vídeo compatível.')
+                        event.target.value = ''
+                        return
+                      }
+                      if (file.size > 8 * 1024 * 1024) {
+                        setError('O arquivo deve ter no máximo 8 MB.')
+                        event.target.value = ''
+                        return
+                      }
+                      setError('')
+                      setSelectedFile(file)
+                    }} />
+                  </span>
+                </label>
+                {editingId && posts.find((post) => post.id === editingId)?.mediaMimeType && !selectedFile && (
+                  <button className="mt-2 text-xs text-red-300/80 hover:text-red-200" onClick={() => void handleRemoveMedia()} type="button">Remover mídia atual</button>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[#b8c9be]"><ImagePlus size={14} /> Prévia da publicação</div>
+                <div className="mx-auto max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#111713]">
+                  <div className="flex items-center gap-2 border-b border-white/8 px-3 py-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#8fcca0]/15 text-[#a8d7b4]"><Instagram size={14} /></div>
+                    <div className="min-w-0"><strong className="block truncate text-xs text-white/85">Sua marca</strong><span className="text-[10px] text-white/35">{platformLabels[form.platform]} · {formatLabels[form.format]}</span></div>
+                  </div>
+                  {filePreviewUrl ? (
+                    selectedFile?.type.startsWith('video/') ? <video className="max-h-80 w-full bg-black object-contain" src={filePreviewUrl} controls /> : <img className="max-h-80 w-full bg-black object-contain" src={filePreviewUrl} alt="Prévia da mídia selecionada" />
+                  ) : editingId && posts.find((post) => post.id === editingId)?.mediaMimeType ? (
+                    posts.find((post) => post.id === editingId)?.mediaMimeType?.startsWith('video/')
+                      ? <video className="max-h-80 w-full bg-black object-contain" src={getPostMediaUrl(editingId)} controls />
+                      : <img className="max-h-80 w-full bg-black object-contain" src={getPostMediaUrl(editingId)} alt="Mídia da publicação" />
+                  ) : (
+                    <div className="flex h-36 flex-col items-center justify-center gap-2 bg-white/3 text-white/30"><FileImage size={24} /><span className="text-[10px]">Sua mídia aparecerá aqui</span></div>
+                  )}
+                  <div className="space-y-1 px-3 py-3">
+                    <strong className="block truncate text-xs text-white/85">{form.title || 'Título da publicação'}</strong>
+                    <p className="whitespace-pre-wrap break-words text-xs text-white/60">{form.caption || 'A legenda que você escrever aparecerá aqui.'}</p>
+                  </div>
+                </div>
+              </div>
+
               <label className={labelClass}>
                 Rede social
                 <select className={inputClass} value={form.platform} onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value as SocialPlatform }))}>
@@ -385,9 +498,12 @@ export default function PostsManagerPage() {
             {isLoading && <p className="empty-state">Carregando publicações...</p>}
             {!isLoading && visiblePosts.map((post) => (
               <article className="glass-row flex-wrap gap-3" key={post.id}>
-                <div className="post-thumb sage shrink-0"><Instagram size={17} /></div>
+                <div className="post-thumb sage shrink-0 overflow-hidden">
+                  {post.mediaMimeType?.startsWith('video/') ? <Video size={17} /> : post.mediaMimeType?.startsWith('image/') ? <img className="h-full w-full object-cover" src={getPostMediaUrl(post.id)} alt="" /> : <Instagram size={17} />}
+                </div>
                 <div className="min-w-0 flex-1">
                   <strong className="block truncate">{post.title}</strong>
+                  {post.caption && <span className="mt-1 block line-clamp-2">{post.caption}</span>}
                   <span className="mt-1 block">{platformLabels[post.platform]} · {formatLabels[post.format]}</span>
                   <span className="mt-1 block text-[10px] text-white/40">{post.status === 'SCHEDULED' ? <CalendarClock size={11} className="mr-1 inline" /> : <Clock3 size={11} className="mr-1 inline" />}{formatPostDate(post)}</span>
                 </div>
