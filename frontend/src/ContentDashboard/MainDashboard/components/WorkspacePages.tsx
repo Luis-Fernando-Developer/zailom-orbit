@@ -222,9 +222,22 @@ function postDate(post: ApiPost): string {
     : 'Sem data'
 }
 
+function calendarWeekStart(date: Date): Date {
+  const result = new Date(date)
+  result.setHours(0, 0, 0, 0)
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7))
+  return result
+}
+
+function calendarAddDays(date: Date, amount: number): Date {
+  const result = new Date(date)
+  result.setDate(result.getDate() + amount)
+  return result
+}
+
 function CalendarPage() {
-  const [selectedDate, setSelectedDate] = useState(0)
-  const [weekOffset, setWeekOffset] = useState(0)
+  const [view, setView] = useState<'day' | 'week' | 'month'>('week')
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [showForm, setShowForm] = useState(false)
   const [title, setTitle] = useState('')
   const [scheduleTime, setScheduleTime] = useState(() => defaultScheduleTime(new Date()))
@@ -232,60 +245,71 @@ function CalendarPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
-  const days = useMemo(
-    () =>
-      Array.from({ length: 7 }, (_, index) => {
-        const date = new Date()
-        date.setHours(0, 0, 0, 0)
-        date.setDate(date.getDate() + weekOffset * 7 + index)
-        return date
-      }),
-    [weekOffset],
-  )
-  const weekStart = days[0]
-  const weekEnd = new Date(days[6])
-  weekEnd.setHours(23, 59, 59, 999)
+
+  const range = useMemo(() => {
+    if (view === 'day') {
+      const start = new Date(selectedDate)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date(start)
+      end.setHours(23, 59, 59, 999)
+      return { start, end }
+    }
+    if (view === 'week') {
+      const start = calendarWeekStart(selectedDate)
+      const end = calendarAddDays(start, 6)
+      end.setHours(23, 59, 59, 999)
+      return { start, end }
+    }
+    const first = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+    const start = calendarWeekStart(first)
+    const end = calendarAddDays(start, 41)
+    end.setHours(23, 59, 59, 999)
+    return { start, end }
+  }, [selectedDate, view])
 
   useEffect(() => {
     let active = true
     setIsLoading(true)
     setError('')
-    getPosts({ from: weekStart.toISOString(), to: weekEnd.toISOString() })
-      .then((result) => {
-        if (active) setPosts(result)
-      })
+    getPosts({ from: range.start.toISOString(), to: range.end.toISOString() })
+      .then((result) => { if (active) setPosts(result) })
       .catch((requestError: unknown) => {
-        if (active) {
-          setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar o calendário.')
-        }
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar o calendário.')
       })
-      .finally(() => {
-        if (active) setIsLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [weekOffset])
+      .finally(() => { if (active) setIsLoading(false) })
+    return () => { active = false }
+  }, [range])
 
-  const selectedLabel = new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(days[selectedDate])
-  const selectedPosts = posts.filter(
-    (post) => post.scheduledAt && localDateKey(new Date(post.scheduledAt)) === localDateKey(days[selectedDate]),
+  const days = useMemo(
+    () => Array.from({ length: view === 'day' ? 1 : view === 'week' ? 7 : 42 }, (_, index) => calendarAddDays(range.start, index)),
+    [range, view],
   )
-  const scheduledDays = new Set(
-    posts.flatMap((post) => post.scheduledAt ? [localDateKey(new Date(post.scheduledAt))] : []),
-  )
-  const channelsThisWeek = new Set(posts.map((post) => post.platform)).size
+  const postsForDay = (date: Date) => posts
+    .filter((post) => post.scheduledAt && localDateKey(new Date(post.scheduledAt)) === localDateKey(date))
+    .sort((a, b) => new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime())
+  const selectedPosts = postsForDay(selectedDate)
+  const titleDate = view === 'month'
+    ? new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(selectedDate)
+    : view === 'day'
+      ? new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }).format(selectedDate)
+      : new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(days[0]) + ' — ' +
+        new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(days[6])
+
+  function navigate(direction: number) {
+    const next = new Date(selectedDate)
+    if (view === 'day') next.setDate(next.getDate() + direction)
+    else if (view === 'week') next.setDate(next.getDate() + direction * 7)
+    else next.setMonth(next.getMonth() + direction)
+    setSelectedDate(next)
+    setScheduleTime(defaultScheduleTime(next))
+  }
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!title.trim()) return
     setIsSaving(true)
     setError('')
-    const scheduledAt = new Date(days[selectedDate])
+    const scheduledAt = new Date(selectedDate)
     const [hours, minutes] = scheduleTime.split(':').map(Number)
     scheduledAt.setHours(hours, minutes, 0, 0)
     try {
@@ -309,93 +333,120 @@ function CalendarPage() {
 
   return (
     <PageFrame page="calendar">
-      <SectionHeading
-        title="Sua semana"
-        description="Selecione um dia para revisar ou planejar o conteúdo."
-        action={
-          <div className="flex items-center gap-2">
-            <GlassButton onClick={() => setWeekOffset((offset) => offset - 1)}><ChevronLeft size={15} /> Semana anterior</GlassButton>
-            <GlassButton onClick={() => setWeekOffset((offset) => offset + 1)}><ChevronRight size={15} /> Próxima</GlassButton>
-          </div>
-        }
-      />
-      <section className="panel week-strip" aria-label="Dias da semana">
-        {days.map((date, index) => (
-          <button
-            className={`week-day ${selectedDate === index ? 'selected' : ''}`}
-            key={date.toISOString()}
-            onClick={() => {
-              setSelectedDate(index)
-              setScheduleTime(defaultScheduleTime(date))
-            }}
-            type="button"
-          >
-            <span>{new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(date).replace('.', '')}</span>
-            <strong>{date.getDate()}</strong>
-            <i aria-hidden="true" />
-          </button>
-        ))}
-      </section>
-      <div className="dashboard-grid page-grid-spaced">
-        <section className="panel">
-          <SectionHeading
-            title={selectedLabel}
-            description="Conteúdo planejado para o dia."
-            action={<GlassButton onClick={() => setShowForm((value) => !value)}><Plus size={14} /> Novo post</GlassButton>}
-          />
-          {showForm && (
-            <form className="inline-form" onSubmit={addEvent}>
-              <label>
-                Título da publicação
-                <input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Dica da semana" />
-              </label>
-              <label>
-                Horário
-                <input required type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} />
-              </label>
-              <button className="glass-button" disabled={isSaving} type="submit">
-                <Check size={14} /> {isSaving ? 'Salvando...' : 'Agendar publicação'}
-              </button>
-            </form>
-          )}
-          {error && <p className="inline-notice" role="alert">{error}</p>}
-          <div className="timeline-list">
-            {isLoading && <p className="empty-state">Carregando publicações...</p>}
-            {!isLoading && selectedPosts.map((post) => (
-              <article className="timeline-item" key={post.id}>
-                <time>{post.scheduledAt && new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
-                <span className="timeline-marker" aria-hidden="true" />
-                <div className="glass-row flex-1">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className="metric-icon mint"><ImagePlus size={15} /></span>
-                    <div className="min-w-0">
-                      <strong>{post.title}</strong>
-                      <span>{postChannel(post)}</span>
-                    </div>
-                  </div>
-                  <span className={`status status-${statusLabels[post.status].toLocaleLowerCase('pt-BR')}`}>
-                    {statusLabels[post.status]}
-                  </span>
-                </div>
-              </article>
+      <section className="panel mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <GlassButton onClick={() => navigate(-1)}><ChevronLeft size={15} /> Anterior</GlassButton>
+          <GlassButton onClick={() => setSelectedDate(new Date())}>Hoje</GlassButton>
+          <GlassButton onClick={() => navigate(1)}>Próximo <ChevronRight size={15} /></GlassButton>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-base font-semibold capitalize">{titleDate}</h2>
+          <div className="filter-tabs" role="tablist" aria-label="Visualização do calendário">
+            {([['day', 'Dia'], ['week', 'Semana'], ['month', 'Mês']] as const).map(([value, label]) => (
+              <button aria-selected={view === value} className={view === value ? 'selected' : ''} key={value} onClick={() => setView(value)} role="tab" type="button">{label}</button>
             ))}
-            {!isLoading && selectedPosts.length === 0 && <p className="empty-state">Nenhuma publicação planejada para este dia.</p>}
           </div>
-        </section>
+          <GlassButton onClick={() => setShowForm((value) => !value)}><Plus size={14} /> Nova publicação</GlassButton>
+        </div>
+      </section>
+
+      {showForm && (
+        <form className="panel inline-form mb-4" onSubmit={addEvent}>
+          <label>Título da publicação<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Dica da semana" /></label>
+          <label>Data<input type="date" required value={localDateKey(selectedDate)} onChange={(event) => {
+            if (event.target.value) {
+              const parts = event.target.value.split('-').map(Number)
+              setSelectedDate(new Date(parts[0], parts[1] - 1, parts[2]))
+            }
+          }} /></label>
+          <label>Horário<input required type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} /></label>
+          <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Agendar publicação'}</button>
+        </form>
+      )}
+      {error && <p className="inline-notice mb-3" role="alert">{error}</p>}
+
+      {view === 'month' ? (
         <section className="panel">
-          <SectionHeading title="Ritmo de publicação" description="Uma rotina consistente ajuda sua marca." />
-          <div className="schedule-summary">
-            <div><strong>{posts.length}</strong><span>posts nesta semana</span></div>
-            <div><strong>{channelsThisWeek}</strong><span>canais planejados</span></div>
-            <div><strong>{Math.max(0, 7 - scheduledDays.size)}</strong><span>dias sem publicação</span></div>
+          <div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60">
+            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}
           </div>
-          <div className="glass-note"><Sparkles size={16} /><span>Uma boa próxima etapa é definir os melhores horários para cada rede conectada.</span></div>
+          <div className="mt-2 grid grid-cols-7 gap-1">
+            {days.map((date) => {
+              const dayPosts = postsForDay(date)
+              const inMonth = date.getMonth() === selectedDate.getMonth()
+              const today = localDateKey(date) === localDateKey(new Date())
+              return (
+                <button className={'min-h-24 rounded-xl border p-2 text-left transition hover:bg-white/5 sm:min-h-28 ' + (inMonth ? 'border-white/10' : 'border-transparent opacity-35') + (today ? ' ring-1 ring-emerald-400/60' : '')} key={localDateKey(date)} onClick={() => { setSelectedDate(date); setView('day') }} type="button">
+                  <span className={'text-xs font-semibold ' + (today ? 'text-emerald-300' : '')}>{date.getDate()}</span>
+                  <span className="mt-2 flex flex-col gap-1">
+                    {dayPosts.slice(0, 2).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
+                    {dayPosts.length > 2 && <span className="text-[10px] opacity-60">+{dayPosts.length - 2} publicações</span>}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {isLoading && <p className="empty-state mt-3">Carregando publicações...</p>}
+          {!isLoading && posts.length === 0 && <p className="empty-state mt-3">Nenhuma publicação neste período.</p>}
         </section>
-      </div>
+      ) : view === 'week' ? (
+        <section className="panel">
+          <div className="grid grid-cols-7 gap-2">
+            {days.map((date) => {
+              const dayPosts = postsForDay(date)
+              const selected = localDateKey(date) === localDateKey(selectedDate)
+              const today = localDateKey(date) === localDateKey(new Date())
+              return (
+                <button className={'min-h-36 rounded-xl border p-2 text-left transition hover:bg-white/5 sm:min-h-52 ' + (selected ? 'border-emerald-400/50 bg-emerald-400/5' : 'border-white/10')} key={localDateKey(date)} onClick={() => setSelectedDate(date)} type="button">
+                  <span className="flex flex-col gap-1 border-b border-white/10 pb-2">
+                    <span className="text-[10px] uppercase opacity-60">{new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(date).replace('.', '')}</span>
+                    <strong className={today ? 'text-emerald-300' : ''}>{date.getDate()}</strong>
+                  </span>
+                  <span className="mt-2 flex flex-col gap-1">
+                    {dayPosts.slice(0, 3).map((post) => <span className="truncate rounded-md bg-emerald-400/10 px-1.5 py-1 text-[10px] text-emerald-100" key={post.id}>{post.title}</span>)}
+                    {dayPosts.length > 3 && <span className="text-[10px] opacity-60">+{dayPosts.length - 3}</span>}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {isLoading && <p className="empty-state mt-3">Carregando publicações...</p>}
+        </section>
+      ) : (
+        <div className="dashboard-grid page-grid-spaced">
+          <section className="panel">
+            <SectionHeading title={titleDate} description="Publicações programadas para este dia." action={<GlassButton onClick={() => setShowForm(true)}><Plus size={14} /> Agendar</GlassButton>} />
+            <div className="timeline-list">
+              {isLoading && <p className="empty-state">Carregando publicações...</p>}
+              {!isLoading && selectedPosts.map((post) => (
+                <article className="timeline-item" key={post.id}>
+                  <time>{post.scheduledAt && new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                  <span className="timeline-marker" aria-hidden="true" />
+                  <div className="glass-row flex-1">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <span className="metric-icon mint"><ImagePlus size={15} /></span>
+                      <div className="min-w-0"><strong>{post.title}</strong><span>{postChannel(post)}</span></div>
+                    </div>
+                    <span className={'status status-' + statusLabels[post.status].toLocaleLowerCase('pt-BR')}>{statusLabels[post.status]}</span>
+                  </div>
+                </article>
+              ))}
+              {!isLoading && selectedPosts.length === 0 && <p className="empty-state">Nenhuma publicação planejada para este dia.</p>}
+            </div>
+          </section>
+          <section className="panel">
+            <SectionHeading title="Resumo do dia" description="Visão rápida do planejamento." />
+            <div className="schedule-summary">
+              <div><strong>{selectedPosts.length}</strong><span>publicações no dia</span></div>
+              <div><strong>{new Set(selectedPosts.map((post) => post.platform)).size}</strong><span>canais planejados</span></div>
+              <div><strong>{selectedPosts.filter((post) => post.status === 'PUBLISHED').length}</strong><span>já publicadas</span></div>
+            </div>
+          </section>
+        </div>
+      )}
     </PageFrame>
   )
 }
-
 function PostsPage() {
   const [filter, setFilter] = useState('Todas')
   const [showForm, setShowForm] = useState(false)
