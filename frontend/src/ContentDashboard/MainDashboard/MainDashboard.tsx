@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import StaticsMain from './components/StaticsMain'
 import WorkspacePages, { type WorkspacePage } from './components/WorkspacePages'
+import PostsManagerPage from './components/PostsManagerPage'
 
 const pageIds: WorkspacePage[] = [
   'overview',
@@ -195,7 +196,7 @@ export default function MainDashboard() {
       ref={pageRef}
       className="min-w-0 min-h-0 flex-1 flex h-full overflow-hidden"
     >
-      {page === 'overview' ? <StaticsMain /> : <WorkspacePages page={page} />}
+      {page === 'overview' ? <StaticsMain /> : page === 'posts' ? <PostsManagerPage /> : <WorkspacePages page={page} />}
     </div>
   )
 }
