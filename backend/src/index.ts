@@ -652,7 +652,8 @@ app.post<{
 
   const formatRule = mediaRules[post.platform]?.[post.format];
   if (!formatRule) return sendInvalidPost(reply);
-  const existingMediaCount = await prisma.postMedia.count({ where: { postId: post.id } });
+  const existingMedia = await prisma.postMedia.findMany({ where: { postId: post.id }, select: { data: true } });
+  const existingMediaCount = existingMedia.length;
   if (existingMediaCount + request.body.files.length > formatRule.maxMedia) {
     return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
   }
@@ -662,7 +663,7 @@ app.post<{
   const lastMedia = await prisma.postMedia.aggregate({ where: { postId: post.id }, _max: { sortOrder: true } });
   const nextSortOrder = (lastMedia._max.sortOrder ?? -1) + 1;
   const prepared: Prisma.PostMediaCreateManyInput[] = [];
-  let totalBytes = 0;
+  let totalBytes = existingMedia.reduce((total, item) => total + item.data.length, 0);
   for (const [index, file] of request.body.files.entries()) {
     if (!allowedMediaTypes.has(file.mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.dataBase64)) {
       return reply.code(400).send({
