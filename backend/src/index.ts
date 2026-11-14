@@ -162,6 +162,43 @@ const postSelect = {
 const allowedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
 const maxMediaBytes = 8 * 1024 * 1024;
 
+type MediaKind = "image" | "video";
+const mediaRules: Record<SocialPlatform, Partial<Record<PostFormat, { mediaTypes: MediaKind[]; maxMedia: number }>>> = {
+  INSTAGRAM: {
+    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
+    REEL: { mediaTypes: ["video"], maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+  },
+  FACEBOOK: {
+    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
+    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    REEL: { mediaTypes: ["video"], maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+  },
+  TIKTOK: {
+    POST: { mediaTypes: ["image"], maxMedia: 1 },
+    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image"], maxMedia: 35 },
+  },
+  YOUTUBE: {
+    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    SHORT: { mediaTypes: ["video"], maxMedia: 1 },
+  },
+  LINKEDIN: {
+    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image"], maxMedia: 20 },
+  },
+  OTHER: {
+    POST: { mediaTypes: ["image", "video"], maxMedia: 1 },
+    CAROUSEL: { mediaTypes: ["image", "video"], maxMedia: 10 },
+    VIDEO: { mediaTypes: ["video"], maxMedia: 1 },
+    STORY: { mediaTypes: ["image", "video"], maxMedia: 1 },
+  },
+};
+
 function hasExpectedMediaSignature(media: Buffer, mimeType: string): boolean {
   switch (mimeType) {
     case "image/jpeg":
@@ -407,7 +444,7 @@ app.post<{ Body: PostInput }>(
   async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
-    if (!isPostInput(request.body)) return sendInvalidPost(reply);
+    if (!isPostInput(request.body) || !mediaRules[request.body.platform]?.[request.body.format]) return sendInvalidPost(reply);
     if (!request.body.title.trim()) return sendInvalidPost(reply);
 
     const scheduledAt = parseScheduledAt(request.body.scheduledAt);
@@ -437,7 +474,7 @@ app.patch<{ Params: { id: string }; Body: PostInput }>(
   async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
-    if (!isPostInput(request.body)) return sendInvalidPost(reply);
+    if (!isPostInput(request.body) || !mediaRules[request.body.platform]?.[request.body.format]) return sendInvalidPost(reply);
     if (!request.body.title.trim()) return sendInvalidPost(reply);
 
     const scheduledAt = parseScheduledAt(request.body.scheduledAt);
@@ -534,7 +571,7 @@ app.post<{
         files: {
           type: "array",
           minItems: 1,
-          maxItems: 10,
+          maxItems: 35,
           items: {
             type: "object",
             additionalProperties: false,
@@ -555,7 +592,7 @@ app.post<{
 
   const post = await prisma.post.findFirst({
     where: { id: request.params.id, workspaceId: user.workspaceId },
-    select: { id: true },
+    select: { id: true, platform: true, format: true },
   });
   if (!post) {
     return reply.code(404).send({
@@ -563,7 +600,12 @@ app.post<{
     });
   }
 
+  const formatRule = mediaRules[post.platform]?.[post.format];
+  if (!formatRule) return sendInvalidPost(reply);
   const existingMediaCount = await prisma.postMedia.count({ where: { postId: post.id } });
+  if (existingMediaCount + request.body.files.length > formatRule.maxMedia) {
+    return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
+  }
   const prepared = [];
   let totalBytes = 0;
   for (const [index, file] of request.body.files.entries()) {
@@ -571,6 +613,11 @@ app.post<{
       return reply.code(400).send({
         error: { code: "INVALID_MEDIA", message: "Um dos arquivos possui formato inválido." },
       });
+    }
+
+    const kind: MediaKind = file.mimeType.startsWith("image/") ? "image" : "video";
+    if (!formatRule.mediaTypes.includes(kind)) {
+      return reply.code(400).send({ error: { code: "MEDIA_TYPE_NOT_ALLOWED", message: "O tipo de mídia não é permitido para este formato." } });
     }
 
     const data = Buffer.from(file.dataBase64, "base64");
