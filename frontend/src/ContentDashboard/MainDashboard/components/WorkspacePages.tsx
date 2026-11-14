@@ -246,44 +246,29 @@ function CalendarPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const range = useMemo(() => {
-    if (view === 'day') {
-      const start = new Date(selectedDate)
-      start.setHours(0, 0, 0, 0)
-      const end = new Date(start)
-      end.setHours(23, 59, 59, 999)
-      return { start, end }
-    }
-    if (view === 'week') {
-      const start = calendarWeekStart(selectedDate)
-      const end = calendarAddDays(start, 6)
-      end.setHours(23, 59, 59, 999)
-      return { start, end }
-    }
-    const first = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
-    const start = calendarWeekStart(first)
-    const end = calendarAddDays(start, 41)
-    end.setHours(23, 59, 59, 999)
-    return { start, end }
-  }, [selectedDate, view])
-
   useEffect(() => {
     let active = true
     setIsLoading(true)
     setError('')
-    getPosts({ from: range.start.toISOString(), to: range.end.toISOString() })
+    getPosts()
       .then((result) => { if (active) setPosts(result) })
       .catch((requestError: unknown) => {
         if (active) setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar o calendário.')
       })
       .finally(() => { if (active) setIsLoading(false) })
     return () => { active = false }
-  }, [range])
+  }, [])
 
-  const days = useMemo(
-    () => Array.from({ length: view === 'day' ? 1 : view === 'week' ? 7 : 42 }, (_, index) => calendarAddDays(range.start, index)),
-    [range, view],
-  )
+  const days = useMemo(() => {
+    const start = view === 'day'
+      ? new Date(selectedDate)
+      : view === 'week'
+        ? calendarWeekStart(selectedDate)
+        : calendarWeekStart(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
+    if (view === 'day') start.setHours(0, 0, 0, 0)
+    return Array.from({ length: view === 'day' ? 1 : view === 'week' ? 7 : 42 }, (_, index) => calendarAddDays(start, index))
+  }, [selectedDate, view])
+
   const postsForDay = (date: Date) => posts
     .filter((post) => post.scheduledAt && localDateKey(new Date(post.scheduledAt)) === localDateKey(date))
     .sort((a, b) => new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime())
@@ -370,7 +355,7 @@ function CalendarPage() {
           <div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60">
             {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}
           </div>
-          <div className="mt-2 grid grid-cols-7 gap-1">
+          <div className="calendar-grid-scroll"><div className="mt-2 grid grid-cols-7 gap-1 calendar-month-grid">
             {days.map((date) => {
               const dayPosts = postsForDay(date)
               const inMonth = date.getMonth() === selectedDate.getMonth()
@@ -385,13 +370,13 @@ function CalendarPage() {
                 </button>
               )
             })}
-          </div>
+          </div></div>
           {isLoading && <p className="empty-state mt-3">Carregando publicações...</p>}
           {!isLoading && posts.length === 0 && <p className="empty-state mt-3">Nenhuma publicação neste período.</p>}
         </section>
       ) : view === 'week' ? (
         <section className="panel">
-          <div className="grid grid-cols-7 gap-2">
+          <div className="calendar-week-scroll"><div className="grid grid-cols-7 gap-2 calendar-week-grid">
             {days.map((date) => {
               const dayPosts = postsForDay(date)
               const selected = localDateKey(date) === localDateKey(selectedDate)
@@ -409,7 +394,7 @@ function CalendarPage() {
                 </button>
               )
             })}
-          </div>
+          </div></div>
           {isLoading && <p className="empty-state mt-3">Carregando publicações...</p>}
         </section>
       ) : (
