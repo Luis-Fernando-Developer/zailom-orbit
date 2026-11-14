@@ -606,7 +606,9 @@ app.post<{
   if (existingMediaCount + request.body.files.length > formatRule.maxMedia) {
     return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
   }
-  const prepared = [];
+  const lastMedia = await prisma.postMedia.aggregate({ where: { postId: post.id }, _max: { sortOrder: true } });
+  const nextSortOrder = (lastMedia._max.sortOrder ?? -1) + 1;
+  const prepared: Prisma.PostMediaCreateManyInput[] = [];
   let totalBytes = 0;
   for (const [index, file] of request.body.files.entries()) {
     if (!allowedMediaTypes.has(file.mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.dataBase64)) {
@@ -641,12 +643,56 @@ app.post<{
       fileName: file.fileName.trim(),
       mimeType: file.mimeType,
       data,
-      sortOrder: existingMediaCount + index,
+      sortOrder: nextSortOrder + index,
       postId: post.id,
     });
   }
 
   await prisma.postMedia.createMany({ data: prepared });
+  return reply.code(204).send();
+});
+
+app.patch<{
+  Params: { id: string };
+  Body: { mediaIds: string[] };
+}>("/api/posts/:id/media/order", {
+  schema: {
+    body: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mediaIds"],
+      properties: {
+        mediaIds: { type: "array", minItems: 1, maxItems: 35, uniqueItems: true, items: { type: "string", minLength: 1 } },
+      },
+    },
+  },
+}, async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const post = await prisma.post.findFirst({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    select: { id: true },
+  });
+  if (!post) return reply.code(404).send({ error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." } });
+
+  const current = await prisma.postMedia.findMany({
+    where: { postId: post.id },
+    select: { id: true },
+  });
+  if (
+    current.length !== request.body.mediaIds.length ||
+    !request.body.mediaIds.every((id) => current.some((item) => item.id === id))
+  ) {
+    return reply.code(400).send({ error: { code: "INVALID_MEDIA_ORDER", message: "A ordem enviada não corresponde às mídias desta publicação." } });
+  }
+
+  await prisma.$transaction(
+    request.body.mediaIds.map((id, index) => prisma.postMedia.update({
+      where: { id },
+      data: { sortOrder: index },
+    })),
+  );
   return reply.code(204).send();
 });
 
