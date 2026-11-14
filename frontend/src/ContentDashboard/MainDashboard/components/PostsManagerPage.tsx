@@ -23,6 +23,7 @@ import {
   updatePost,
   uploadPostMediaBatch,
   deletePostMediaItem,
+  reorderPostMedia,
   getPostMediaItemUrl,
   getPostMediaUrl,
   type ApiPost,
@@ -199,20 +200,36 @@ export default function PostsManagerPage() {
   const legacyMediaCount = editingId && existingMedia.length === 0 && posts.find((post) => post.id === editingId)?.mediaMimeType ? 1 : 0
   const totalMediaCount = existingMedia.length + legacyMediaCount + selectedFiles.length
 
+  function canApplyRule(rule: ReturnType<typeof getFormatRule>): boolean {
+    const currentMediaTypes = [
+      ...existingMedia.map((media) => media.mimeType),
+      ...(legacyMediaCount && editingId ? [posts.find((post) => post.id === editingId)?.mediaMimeType ?? ''] : []),
+      ...selectedFiles.map((file) => file.type),
+    ]
+    const hasUnsupportedMedia = currentMediaTypes.some((mimeType) => {
+      const kind = mimeType.startsWith('image/') ? 'image' : mimeType.startsWith('video/') ? 'video' : null
+      return !kind || !rule.mediaTypes.includes(kind)
+    })
+    if (totalMediaCount > rule.maxMedia || hasUnsupportedMedia) {
+      setError('O formato escolhido não é compatível com as mídias atuais. Remova ou substitua os arquivos antes de trocar.')
+      return false
+    }
+    return true
+  }
+
   function changePlatform(platform: SocialPlatform) {
     const formats = getAvailableFormats(platform)
-    setForm((current) => ({
-      ...current,
-      platform,
-      format: formats.some((item) => item.value === current.format) ? current.format : formats[0].value,
-    }))
-    setSelectedFiles([])
+    const nextFormat = formats.some((item) => item.value === form.format) ? form.format : formats[0].value
+    const nextRule = getFormatRule(platform, nextFormat)
+    if (!canApplyRule(nextRule)) return
+    setForm((current) => ({ ...current, platform, format: nextFormat }))
     setError('')
   }
 
   function changeFormat(format: PostFormat) {
+    const nextRule = getFormatRule(form.platform, format)
+    if (!canApplyRule(nextRule)) return
     setForm((current) => ({ ...current, format }))
-    setSelectedFiles([])
     setError('')
   }
 
@@ -224,6 +241,20 @@ export default function PostsManagerPage() {
       ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
       return next
     })
+  }
+
+  async function moveExistingMedia(index: number, direction: -1 | 1) {
+    if (!editingId) return
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= existingMedia.length) return
+    const ordered = [...existingMedia]
+    ;[ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]]
+    try {
+      await reorderPostMedia(editingId, ordered.map((media) => media.id))
+      await loadPosts()
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível reordenar as mídias.')
+    }
   }
 
   async function handleRemoveExistingMedia(mediaId: string) {
@@ -266,6 +297,17 @@ export default function PostsManagerPage() {
     }
     if (totalMediaCount > activeRule.maxMedia) {
       setError(`Este formato permite no máximo ${activeRule.maxMedia} mídias.`)
+      return
+    }
+    const currentMimeTypes = [
+      ...existingMedia.map((media) => media.mimeType),
+      ...(legacyMediaCount && editingId ? [posts.find((post) => post.id === editingId)?.mediaMimeType ?? ''] : []),
+    ]
+    if (currentMimeTypes.some((mimeType) => {
+      const kind = mimeType.startsWith('image/') ? 'image' : mimeType.startsWith('video/') ? 'video' : null
+      return !kind || !activeRule.mediaTypes.includes(kind)
+    })) {
+      setError('Uma ou mais mídias existentes não são compatíveis com este formato. Remova-as antes de salvar.')
       return
     }
     const selectedFilesError = validateMediaFiles(selectedFiles, { ...activeRule, minMedia: 0, maxMedia: Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount) })
@@ -445,7 +487,11 @@ export default function PostsManagerPage() {
                           : <img className="h-28 w-full object-cover" src={getPostMediaItemUrl(editingId!, media.id)} alt={media.fileName} />}
                         <div className="flex items-center justify-between gap-1 p-2">
                           <span className="min-w-0 truncate text-[10px] text-white/60">{media.fileName}</span>
-                          <button className="text-red-300" type="button" onClick={() => void handleRemoveExistingMedia(media.id)} aria-label={`Remover ${media.fileName}`}><X size={13} /></button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button className="text-white/50 disabled:opacity-20" disabled={index === 0} type="button" onClick={() => void moveExistingMedia(index, -1)} aria-label="Mover para a esquerda"><ChevronRight className="rotate-180" size={12} /></button>
+                            <button className="text-white/50 disabled:opacity-20" disabled={index === existingMedia.length - 1} type="button" onClick={() => void moveExistingMedia(index, 1)} aria-label="Mover para a direita"><ChevronRight size={12} /></button>
+                            <button className="text-red-300" type="button" onClick={() => void handleRemoveExistingMedia(media.id)} aria-label={`Remover ${media.fileName}`}><X size={13} /></button>
+                          </div>
                         </div>
                       </div>
                     ))}
