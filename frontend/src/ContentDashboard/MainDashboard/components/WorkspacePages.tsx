@@ -581,7 +581,7 @@ function CalendarPage() {
                 <div className="flex min-w-0 flex-col gap-3">
                   <span className="text-xs font-medium text-[#b9c6dd]">Mídia</span>
                   <div className="flex aspect-square w-full max-w-[220px] items-center justify-center overflow-hidden rounded-2xl border border-dashed border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.018))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                    {editingPost.mediaItems?.[0] && !editMediaFile ? (
+                    {editingPost.mediaItems?.[0] && !removeEditMedia && !editMediaFile ? (
                       editingPost.mediaItems[0].mimeType.startsWith('video/') ? (
                         <video className="h-full w-full object-contain" src={getPostMediaItemUrl(editingPost.id, editingPost.mediaItems[0].id)} controls />
                       ) : (
