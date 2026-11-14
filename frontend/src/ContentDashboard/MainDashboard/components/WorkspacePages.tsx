@@ -352,9 +352,9 @@ function CalendarPage() {
 
       {view === 'month' ? (
         <section className="panel">
-          <div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60">
+          <div className="calendar-grid-scroll"><div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60 calendar-month-weekdays">
             {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}
-          </div>
+          </div></div>
           <div className="calendar-grid-scroll"><div className="mt-2 grid grid-cols-7 gap-1 calendar-month-grid">
             {days.map((date) => {
               const dayPosts = postsForDay(date)
