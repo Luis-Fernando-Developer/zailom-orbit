@@ -355,6 +355,8 @@ export default function PostsManagerPage() {
       if (selectedFiles.length > 0) {
         try {
           await uploadPostMediaBatch(saved.id, selectedFiles)
+          setSelectedFiles([])
+          setPosts(await getPosts())
           saved = await updatePost(saved.id, payload)
           setPosts((current) => current.map((post) => post.id === saved.id ? saved : post))
         } catch (uploadError) {
