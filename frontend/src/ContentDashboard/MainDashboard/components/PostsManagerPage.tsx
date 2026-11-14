@@ -33,7 +33,7 @@ import {
   type PostStatus,
   type SocialPlatform,
 } from '@/lib/api'
-import { getAcceptForRule, getAvailableFormats, getFormatRule, validateMediaFiles } from '@/config/social-platform-rules'
+import { getAcceptForRule, getAvailableFormats, getFormatRule, getVideoConstraintHint, validateMediaFiles, validateVideoFiles } from '@/config/social-platform-rules'
 
 type PostFilter = 'Todas' | 'Rascunho' | 'Agendado' | 'Publicado'
 
@@ -116,6 +116,7 @@ export default function PostsManagerPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isValidatingMedia, setIsValidatingMedia] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -312,9 +313,17 @@ export default function PostsManagerPage() {
       setError('Uma ou mais mídias existentes não são compatíveis com este formato. Remova-as antes de salvar.')
       return
     }
-    const selectedFilesError = validateMediaFiles(selectedFiles, { ...activeRule, minMedia: 0, maxMedia: Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount) })
+    const selectedFilesRule = { ...activeRule, minMedia: 0, maxMedia: Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount) }
+    const selectedFilesError = validateMediaFiles(selectedFiles, selectedFilesRule)
     if (selectedFilesError) {
       setError(selectedFilesError)
+      return
+    }
+    setIsValidatingMedia(true)
+    const videoValidationError = await validateVideoFiles(selectedFiles, activeRule)
+    setIsValidatingMedia(false)
+    if (videoValidationError) {
+      setError(videoValidationError)
       return
     }
 
@@ -467,24 +476,35 @@ export default function PostsManagerPage() {
               <div className="md:col-span-2">
                 <div className={labelClass}>Mídias da publicação</div>
                 <p className="mt-1 text-[11px] text-white/40">{activeRule.hint} {activeRule.maxMedia > 1 ? 'Você pode selecionar vários arquivos de uma vez.' : 'Este formato aceita somente um arquivo.'}</p>
+                {getVideoConstraintHint(activeRule) && <p className="mt-1 text-[10px] text-[#a8d7b4]/75">Validação de vídeo: {getVideoConstraintHint(activeRule)}.</p>}
                 <label className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-black/15 px-4 py-6 text-center transition hover:border-[#8fcca0]/50 hover:bg-white/3 ${activeRule.maxMedia === 0 ? 'pointer-events-none opacity-40' : ''}`}>
                   <Upload size={19} className="mb-2 text-[#a8d7b4]" />
                   <strong className="text-xs text-white/80">Adicionar mídia</strong>
-                  <span className="mt-1 text-[10px] text-white/40">Até 8 MB por publicação · formatos compatíveis com a rede selecionada</span>
-                  <input className="sr-only" type="file" multiple={activeRule.maxMedia > 1} disabled={activeRule.maxMedia === 0} accept={getAcceptForRule(activeRule)} onChange={(event) => {
-                    const incoming = Array.from(event.target.files ?? [])
+                  <span className="mt-1 text-[10px] text-white/40">Até 8 MB por publicação · proporção, resolução e duração verificadas ao selecionar o vídeo</span>
+                  <input className="sr-only" type="file" multiple={activeRule.maxMedia > 1} disabled={activeRule.maxMedia === 0 || isValidatingMedia} accept={getAcceptForRule(activeRule)} onChange={async (event) => {
+                    const input = event.currentTarget
+                    const incoming = Array.from(input.files ?? [])
                     if (!incoming.length) return
                     const remaining = Math.max(0, activeRule.maxMedia - existingMedia.length - legacyMediaCount)
                     const combined = [...selectedFiles, ...incoming]
                     const validation = validateMediaFiles(combined, { ...activeRule, minMedia: 0, maxMedia: remaining })
                     if (validation) {
                       setError(validation)
-                      event.target.value = ''
+                      input.value = ''
+                      return
+                    }
+                    setIsValidatingMedia(true)
+                    setError('Analisando resolução, proporção e duração do vídeo...')
+                    const videoError = await validateVideoFiles(incoming, activeRule)
+                    setIsValidatingMedia(false)
+                    if (videoError) {
+                      setError(videoError)
+                      input.value = ''
                       return
                     }
                     setError('')
                     setSelectedFiles(combined)
-                    event.target.value = ''
+                    input.value = ''
                   }} />
                 </label>
                 {(existingMedia.length > 0 || legacyMediaCount > 0 || selectedFiles.length > 0) && (
@@ -604,8 +624,8 @@ export default function PostsManagerPage() {
 
               <div className="flex flex-wrap items-center justify-end gap-2 md:col-span-2">
                 <button className="glass-button" disabled={isSaving} onClick={closeForm} type="button">Cancelar</button>
-                <button className="primary-button" disabled={isSaving} type="submit">
-                  {isSaving ? 'Salvando...' : <><Check size={14} /> {editingId ? 'Salvar alterações' : form.status === 'SCHEDULED' ? 'Agendar publicação' : 'Criar publicação'}</>}
+                <button className="primary-button" disabled={isSaving || isValidatingMedia} type="submit">
+                  {isValidatingMedia ? 'Validando vídeo...' : isSaving ? 'Salvando...' : <><Check size={14} /> {editingId ? 'Salvar alterações' : form.status === 'SCHEDULED' ? 'Agendar publicação' : 'Criar publicação'}</>}
                 </button>
               </div>
             </form>
