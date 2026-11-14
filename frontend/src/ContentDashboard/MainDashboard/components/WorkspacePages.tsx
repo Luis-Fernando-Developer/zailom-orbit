@@ -291,6 +291,7 @@ function CalendarPage() {
     try {
       const created = await createPost({
         title: title.trim(),
+        caption: '',
         platform: 'INSTAGRAM',
         format: 'POST',
         status: 'SCHEDULED',
@@ -431,6 +432,7 @@ function PostsPage() {
     try {
       const created = await createPost({
         title: draftTitle.trim(),
+        caption: '',
         platform: 'INSTAGRAM',
         format: 'POST',
         status: 'DRAFT',
