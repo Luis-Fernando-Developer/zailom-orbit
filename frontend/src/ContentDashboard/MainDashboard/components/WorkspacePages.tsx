@@ -409,34 +409,6 @@ function CalendarPage() {
       )}
       {error && <p className="inline-notice mb-3" role="alert">{error}</p>}
 
-      {editingPost && (
-        <form className="panel inline-form mb-4" onSubmit={saveEditedPost}>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <strong>Editar publicação</strong>
-            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Fechar</button>
-          </div>
-          <label>Título<input required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
-          <label>Legenda<textarea value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} /></label>
-          <label>Mídia (imagem ou vídeo)
-            {editingPost.mediaName && !removeEditMedia && !editMediaFile && <span className="block text-xs opacity-70">Arquivo atual: {editingPost.mediaName}</span>}
-            {editingPost.mediaName && !removeEditMedia && <img className="mt-2 max-h-48 rounded-xl object-contain" src={getPostMediaUrl(editingPost.id)} alt="Mídia atual da publicação" />}
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
-            {editingPost.mediaName && <button className="glass-button mt-2" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
-            {editMediaFile && <span className="block text-xs opacity-70">Novo arquivo: {editMediaFile.name}</span>}
-            {removeEditMedia && <span className="block text-xs opacity-70">A mídia atual será removida.</span>}
-          </label>
-          <label>Rede social<select value={editPlatform} onChange={(event) => setEditPlatform(event.target.value as ApiPost['platform'])}>{Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Formato<select value={editFormat} onChange={(event) => setEditFormat(event.target.value as ApiPost['format'])}>{Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Situação<select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ApiPost['status'])}><option value="DRAFT">Rascunho</option><option value="SCHEDULED">Agendado</option><option value="PUBLISHED">Publicado</option></select></label>
-          {editStatus === 'SCHEDULED' && <label>Data e horário<input required type="datetime-local" value={editDateTime} onChange={(event) => setEditDateTime(event.target.value)} /></label>}
-          <div className="flex justify-end gap-2">
-            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Cancelar</button>
-            <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Salvar alterações'}</button>
-          </div>
-        </form>
-      )}
-
-
       {view === 'month' ? (
         <section className="panel">
           <div className="calendar-grid-scroll"><div className="grid grid-cols-7 border-b border-white/10 pb-2 text-center text-xs font-medium uppercase tracking-wide opacity-60 calendar-month-weekdays">
@@ -516,6 +488,33 @@ function CalendarPage() {
           </section>
         </div>
       )}
+      {editingPost && (
+        <form className="panel inline-form mb-4" onSubmit={saveEditedPost}>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <strong>Editar publicação</strong>
+            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Fechar</button>
+          </div>
+          <label>Título<input required maxLength={160} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
+          <label>Legenda<textarea value={editCaption} onChange={(event) => setEditCaption(event.target.value)} rows={3} maxLength={5000} /></label>
+          <label>Mídia (imagem ou vídeo)
+            {editingPost.mediaName && !removeEditMedia && !editMediaFile && <span className="block text-xs opacity-70">Arquivo atual: {editingPost.mediaName}</span>}
+            {editingPost.mediaName && !removeEditMedia && <img className="mt-2 max-h-48 rounded-xl object-contain" src={getPostMediaUrl(editingPost.id)} alt="Mídia atual da publicação" />}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => { setEditMediaFile(event.target.files?.[0] ?? null); setRemoveEditMedia(false) }} />
+            {editingPost.mediaName && <button className="glass-button mt-2" type="button" onClick={() => { setRemoveEditMedia(true); setEditMediaFile(null) }}>Remover mídia atual</button>}
+            {editMediaFile && <span className="block text-xs opacity-70">Novo arquivo: {editMediaFile.name}</span>}
+            {removeEditMedia && <span className="block text-xs opacity-70">A mídia atual será removida.</span>}
+          </label>
+          <label>Rede social<select value={editPlatform} onChange={(event) => setEditPlatform(event.target.value as ApiPost['platform'])}>{Object.entries(platformLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Formato<select value={editFormat} onChange={(event) => setEditFormat(event.target.value as ApiPost['format'])}>{Object.entries(formatLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Situação<select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ApiPost['status'])}><option value="DRAFT">Rascunho</option><option value="SCHEDULED">Agendado</option><option value="PUBLISHED">Publicado</option></select></label>
+          {editStatus === 'SCHEDULED' && <label>Data e horário<input required type="datetime-local" value={editDateTime} onChange={(event) => setEditDateTime(event.target.value)} /></label>}
+          <div className="flex justify-end gap-2">
+            <button className="glass-button" type="button" onClick={() => setEditingPost(null)}>Cancelar</button>
+            <button className="glass-button" disabled={isSaving} type="submit"><Check size={14} /> {isSaving ? 'Salvando...' : 'Salvar alterações'}</button>
+          </div>
+        </form>
+      )}
+
       <section className="panel mt-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div><h3 className="font-semibold">Publicações do dia</h3><p className="text-xs opacity-60">{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(selectedDate)}</p></div>
