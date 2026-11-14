@@ -569,6 +569,24 @@ app.post<{
       error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
     });
   }
+
+  const legacyMediaId = `legacy_${request.params.id}`;
+  const lastMedia = await prisma.postMedia.aggregate({
+    where: { postId: request.params.id },
+    _max: { sortOrder: true },
+  });
+  await prisma.postMedia.upsert({
+    where: { id: legacyMediaId },
+    create: {
+      id: legacyMediaId,
+      fileName: fileName.trim(),
+      mimeType,
+      data: media,
+      sortOrder: (lastMedia._max.sortOrder ?? -1) + 1,
+      postId: request.params.id,
+    },
+    update: { fileName: fileName.trim(), mimeType, data: media },
+  });
   return reply.code(204).send();
 });
 
@@ -794,6 +812,7 @@ app.delete<{ Params: { id: string } }>("/api/posts/:id/media", async (request, r
       error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." },
     });
   }
+  await prisma.postMedia.deleteMany({ where: { id: `legacy_${request.params.id}`, postId: request.params.id } });
   return reply.code(204).send();
 });
 
