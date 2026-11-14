@@ -447,10 +447,6 @@ app.post<{ Body: PostInput }>(
     if (!isPostInput(request.body) || !mediaRules[request.body.platform]?.[request.body.format]) return sendInvalidPost(reply);
     if (!request.body.title.trim()) return sendInvalidPost(reply);
     const formatRule = mediaRules[request.body.platform][request.body.format]!;
-    if (request.body.status !== "DRAFT" && formatRule.minMedia > 0) {
-      return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: "Adicione as mídias obrigatórias antes de agendar ou marcar como publicado." } });
-    }
-
     const scheduledAt = parseScheduledAt(request.body.scheduledAt);
     if (request.body.scheduledAt !== null && !scheduledAt) return sendInvalidPost(reply);
     if (!validateSchedule(reply, request.body.status, scheduledAt)) return;
@@ -492,9 +488,6 @@ app.patch<{ Params: { id: string }; Body: PostInput }>(
     });
     if (currentMedia.length > formatRule.maxMedia) {
       return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
-    }
-    if (request.body.status !== "DRAFT" && currentMedia.length < formatRule.minMedia) {
-      return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: "Adicione as mídias obrigatórias antes de agendar ou marcar como publicado." } });
     }
     if (currentMedia.some((media) => {
       const kind = media.mimeType.startsWith("image/") ? "image" : "video";
