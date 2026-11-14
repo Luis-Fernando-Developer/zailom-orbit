@@ -11,6 +11,9 @@ export type PostFormat = 'POST' | 'STORY' | 'REEL' | 'VIDEO' | 'CAROUSEL' | 'SHO
 export interface ApiPost {
   id: string
   title: string
+  caption: string
+  mediaName: string | null
+  mediaMimeType: string | null
   platform: SocialPlatform
   format: PostFormat
   status: PostStatus
@@ -21,6 +24,7 @@ export interface ApiPost {
 
 export interface PostInput {
   title: string
+  caption: string
   platform: SocialPlatform
   format: PostFormat
   status: PostStatus
@@ -127,4 +131,33 @@ export function updatePost(id: string, input: PostInput): Promise<ApiPost> {
 
 export function deletePost(id: string): Promise<void> {
   return request<void>(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function getPostMediaUrl(id: string): string {
+  return `${apiBaseUrl}/api/posts/${encodeURIComponent(id)}/media`
+}
+
+export async function uploadPostMedia(id: string, file: File): Promise<void> {
+  const dataBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string') {
+        reject(new Error('Não foi possível ler o arquivo selecionado.'))
+        return
+      }
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'))
+    reader.readAsDataURL(file)
+  })
+
+  await request<void>(`/api/posts/${encodeURIComponent(id)}/media`, {
+    method: 'POST',
+    body: JSON.stringify({ fileName: file.name, mimeType: file.type, dataBase64 }),
+  })
+}
+
+export function deletePostMedia(id: string): Promise<void> {
+  return request<void>(`/api/posts/${encodeURIComponent(id)}/media`, { method: 'DELETE' })
 }
