@@ -167,6 +167,13 @@ export async function uploadPostMediaBatch(id: string, files: File[]): Promise<v
   })
 }
 
+export function reorderPostMedia(postId: string, mediaIds: string[]): Promise<void> {
+  return request<void>(`/api/posts/${encodeURIComponent(postId)}/media/order`, {
+    method: "PATCH",
+    body: JSON.stringify({ mediaIds }),
+  })
+}
+
 export function deletePostMediaItem(postId: string, mediaId: string): Promise<void> {
   return request<void>(`/api/posts/${encodeURIComponent(postId)}/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' })
 }
