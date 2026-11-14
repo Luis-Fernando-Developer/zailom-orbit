@@ -541,6 +541,24 @@ app.post<{
   if (!user) return;
 
   const { fileName, mimeType, dataBase64 } = request.body;
+  const targetPost = await prisma.post.findFirst({
+    where: { id: request.params.id, workspaceId: user.workspaceId },
+    select: { id: true, platform: true, format: true },
+  });
+  if (!targetPost) {
+    return reply.code(404).send({ error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." } });
+  }
+  const formatRule = mediaRules[targetPost.platform]?.[targetPost.format];
+  const mediaKind: MediaKind = mimeType.startsWith("image/") ? "image" : "video";
+  if (!formatRule || !formatRule.mediaTypes.includes(mediaKind)) {
+    return reply.code(400).send({ error: { code: "MEDIA_TYPE_NOT_ALLOWED", message: "O tipo de mídia não é permitido para este formato." } });
+  }
+  const legacyMediaId = `legacy_${request.params.id}`;
+  const legacyExists = await prisma.postMedia.findUnique({ where: { id: legacyMediaId }, select: { id: true } });
+  const existingMediaCount = await prisma.postMedia.count({ where: { postId: targetPost.id } });
+  if (existingMediaCount - (legacyExists ? 1 : 0) >= formatRule.maxMedia) {
+    return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
+  }
   if (!allowedMediaTypes.has(mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) {
     return reply.code(400).send({
       error: { code: "INVALID_MEDIA", message: "Envie uma imagem ou vídeo em formato permitido." },
@@ -570,7 +588,6 @@ app.post<{
     });
   }
 
-  const legacyMediaId = `legacy_${request.params.id}`;
   const lastMedia = await prisma.postMedia.aggregate({
     where: { postId: request.params.id },
     _max: { sortOrder: true },
