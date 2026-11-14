@@ -607,7 +607,7 @@ app.post<{
 
   const post = await prisma.post.findFirst({
     where: { id: request.params.id, workspaceId: user.workspaceId },
-    select: { id: true, platform: true, format: true },
+    select: { id: true, platform: true, format: true, status: true },
   });
   if (!post) {
     return reply.code(404).send({
@@ -621,7 +621,7 @@ app.post<{
   if (existingMediaCount + request.body.files.length > formatRule.maxMedia) {
     return reply.code(400).send({ error: { code: "MEDIA_LIMIT_EXCEEDED", message: `Este formato permite no máximo ${formatRule.maxMedia} mídias.` } });
   }
-  if (existingMediaCount + request.body.files.length < formatRule.minMedia) {
+  if (post.status !== "DRAFT" && existingMediaCount + request.body.files.length < formatRule.minMedia) {
     return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: `Este formato exige pelo menos ${formatRule.minMedia} mídias.` } });
   }
   const lastMedia = await prisma.postMedia.aggregate({ where: { postId: post.id }, _max: { sortOrder: true } });
