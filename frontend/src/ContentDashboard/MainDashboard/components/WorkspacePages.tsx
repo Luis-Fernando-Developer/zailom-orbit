@@ -534,12 +534,12 @@ function CalendarPage() {
       )}
       {editingPost && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 backdrop-blur-md sm:p-6"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3 backdrop-blur-md sm:p-6"
           role="presentation"
           onClick={() => setEditingPost(null)}
         >
           <form
-            className="panel inline-form !flex-col !items-stretch flex min-h-[calc(82vh-10px)] max-h-[calc(94vh-10px)] w-full max-w-3xl overflow-y-auto shadow-2xl sm:min-h-[calc(86vh-10px)]"
+            className="panel inline-form !flex-col !items-stretch flex min-h-0 max-h-[78dvh] w-full max-w-3xl overflow-y-auto overscroll-contain shadow-2xl dashboard-scrollbar sm:max-h-[82dvh]"
             onSubmit={saveEditedPost}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
