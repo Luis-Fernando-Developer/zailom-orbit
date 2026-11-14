@@ -78,7 +78,22 @@ model Post {
   updatedAt   DateTime       @updatedAt
   workspaceId String
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mediaItems  PostMedia[]
 
   @@index([workspaceId, scheduledAt])
   @@index([workspaceId, status])
+}
+
+
+model PostMedia {
+  id        String   @id @default(cuid())
+  fileName  String
+  mimeType  String
+  data      Bytes
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, sortOrder])
 }
