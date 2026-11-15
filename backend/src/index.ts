@@ -656,8 +656,11 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
 
   const savedState = await prisma.instagramOAuthState.findUnique({ where: { state } });
   await prisma.instagramOAuthState.deleteMany({ where: { state } });
-  const callbackUser = await getAuthenticatedUser(request);
-  if (!savedState || savedState.expiresAt <= new Date() || !callbackUser || callbackUser.id !== savedState.userId || callbackUser.workspaceId !== savedState.workspaceId) {
+  // The Facebook callback runs on api-orbit.zailom.com, while the session cookie
+  // is host-only on orbit.zailom.com. The one-time, random OAuth state already
+  // binds this callback to the initiating user and workspace, so do not require
+  // the browser session cookie on the API subdomain.
+  if (!savedState || savedState.expiresAt <= new Date()) {
     resultUrl.searchParams.set("reason", "A autorização expirou. Tente conectar novamente.");
     return reply.redirect(`${resultUrl.toString()}#page-accounts`);
   }
