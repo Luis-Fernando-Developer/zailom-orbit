@@ -692,7 +692,7 @@ function PostsPage() {
   const [showForm, setShowForm] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftPlatform, setDraftPlatform] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
-  const [posts, setPosts = useState<ApiPost[]>([])
+  const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
