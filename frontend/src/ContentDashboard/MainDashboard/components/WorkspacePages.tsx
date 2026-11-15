@@ -215,18 +215,19 @@ function postChannel(post: ApiPost): string {
   return `${platformLabels[post.platform]} · ${formatLabels[post.format]}`
 }
 
+function calendarPostDate(post: ApiPost): string | null {
+  return post.scheduledAt ?? (post.status === 'PUBLISHED' ? post.updatedAt : null)
+}
+
 function postDate(post: ApiPost): string {
-  if (post.scheduledAt) {
-    return new Date(post.scheduledAt).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-  return post.status === 'PUBLISHED'
-    ? new Date(post.updatedAt).toLocaleString('pt-BR', { day: '2-digit', month: 'short' })
-    : 'Sem data'
+  const date = calendarPostDate(post)
+  if (!date) return 'Sem data'
+  return new Date(date).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function calendarWeekStart(date: Date): Date {
@@ -330,8 +331,11 @@ function CalendarPage() {
   }, [selectedDate, view])
 
   const postsForDay = (date: Date) => posts
-    .filter((post) => post.scheduledAt && localDateKey(new Date(post.scheduledAt)) === localDateKey(date))
-    .sort((a, b) => new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime())
+    .filter((post) => {
+      const postDate = calendarPostDate(post)
+      return postDate && localDateKey(new Date(postDate)) === localDateKey(date)
+    })
+    .sort((a, b) => new Date(calendarPostDate(a) ?? 0).getTime() - new Date(calendarPostDate(b) ?? 0).getTime())
   const selectedPosts = postsForDay(selectedDate)
   const titleDate = view === 'month'
     ? new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(selectedDate)
@@ -373,7 +377,9 @@ function CalendarPage() {
     try {
       const scheduledAt = editStatus === 'SCHEDULED' && editDateTime
         ? new Date(editDateTime).toISOString()
-        : null
+        : editStatus === 'PUBLISHED'
+          ? editingPost.scheduledAt
+          : null
       if (removeEditMedia && editingPost.mediaName) await deletePostMedia(editingPost.id)
       let updated = await updatePost(editingPost.id, {
         title: editTitle.trim(),
@@ -512,7 +518,7 @@ function CalendarPage() {
               {isLoading && <p className="empty-state">Carregando publicações...</p>}
               {!isLoading && selectedPosts.map((post) => (
                 <article className="timeline-item" key={post.id}>
-                  <time>{post.scheduledAt && new Date(post.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                  <time>{calendarPostDate(post) && new Date(calendarPostDate(post)!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
                   <span className="timeline-marker" aria-hidden="true" />
                   <div className="glass-row flex-1">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
