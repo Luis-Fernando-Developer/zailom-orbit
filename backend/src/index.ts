@@ -423,14 +423,14 @@ function instagramEncryptionKey(): Buffer {
   return Buffer.from(value, "hex");
 }
 
-function encryptInstagramToken(token: string): string {
+function encryptMetaToken(token: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", instagramEncryptionKey(), iv);
   const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
   return [iv.toString("hex"), cipher.getAuthTag().toString("hex"), encrypted.toString("hex")].join(".");
 }
 
-function decryptInstagramToken(value: string): string {
+function decryptMetaToken(value: string): string {
   const [ivHex, tagHex, encryptedHex] = value.split(".");
   if (!ivHex || !tagHex || !encryptedHex) throw new Error("Token do Instagram inválido.");
   const decipher = createDecipheriv("aes-256-gcm", instagramEncryptionKey(), Buffer.from(ivHex, "hex"));
@@ -443,7 +443,7 @@ function instagramMediaSignature(postId: string, mediaId: string, expires: strin
   return createHmac("sha256", secret).update(`${postId}.${mediaId}.${expires}`).digest("hex");
 }
 
-async function instagramGraphRequest(path: string, params: URLSearchParams, method: "GET" | "POST" = "POST") {
+async function metaGraphRequest(path: string, params: URLSearchParams, method: "GET" | "POST" = "POST") {
   const url = new URL(`https://graph.facebook.com/${instagramApiVersion}/${path}`);
   if (method === "GET") url.search = params.toString();
   const response = await fetch(url, method === "POST" ? {
@@ -581,13 +581,13 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_re
         workspaceId: savedState.workspaceId,
         instagramUserId,
         username: instagramUsername,
-        encryptedToken: encryptInstagramToken(tokenPayload.access_token),
+        encryptedToken: encryptMetaToken(tokenPayload.access_token),
         tokenExpiresAt: instagramTokenNeverExpiresAt,
       },
       update: {
         instagramUserId,
         username: instagramUsername,
-        encryptedToken: encryptInstagramToken(tokenPayload.access_token),
+        encryptedToken: encryptMetaToken(tokenPayload.access_token),
         tokenExpiresAt: instagramTokenNeverExpiresAt,
       },
     });
@@ -711,12 +711,12 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
         workspaceId: savedState.workspaceId,
         pageId: page.id!,
         pageName: page.name!,
-        encryptedToken: encryptInstagramToken(page.access_token!),
+        encryptedToken: encryptMetaToken(page.access_token!),
         tokenExpiresAt: expiresAt,
       },
       update: {
         pageName: page.name!,
-        encryptedToken: encryptInstagramToken(page.access_token!),
+        encryptedToken: encryptMetaToken(page.access_token!),
         tokenExpiresAt: expiresAt,
       },
     });
@@ -763,9 +763,9 @@ app.post<{ Params: { postId: string } }>("/api/facebook/publish/:postId", {
   try {
     const params = new URLSearchParams({
       message: [post.caption, post.title].filter(Boolean).join("\n\n"),
-      access_token: decryptInstagramToken(page.encryptedToken),
+      access_token: decryptMetaToken(page.encryptedToken),
     });
-    const result = await instagramGraphRequest(`${page.pageId}/feed`, params);
+    const result = await metaGraphRequest(`${page.pageId}/feed`, params);
     if (typeof result.id !== "string") throw new Error("A Meta não retornou o identificador da publicação.");
     await prisma.post.update({
       where: { id: post.id },
@@ -836,7 +836,7 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
   if (account.tokenExpiresAt.getTime() < Date.now()) {
     return reply.code(401).send({ error: { code: "INSTAGRAM_TOKEN_EXPIRED", message: "O token do Login Unificado expirou. Desconecte e conecte novamente a conta." } });
   }
-  const accessToken = decryptInstagramToken(account.encryptedToken);
+  const accessToken = decryptMetaToken(account.encryptedToken);
   const mediaUrl = (mediaId: string) => {
     const expires = String(Date.now() + 45 * 60 * 1000);
     const signature = instagramMediaSignature(post.id, mediaId, expires);
@@ -844,7 +844,7 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
   };
   const createContainer = async (params: URLSearchParams) => {
     params.set("access_token", accessToken);
-    return instagramGraphRequest(`${account.instagramUserId}/media`, params);
+    return metaGraphRequest(`${account.instagramUserId}/media`, params);
   };
   try {
     let creationId = "";
@@ -880,7 +880,7 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
 
     let finished = false;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const status = await instagramGraphRequest(creationId, new URLSearchParams({ fields: "status_code,status", access_token: accessToken }), "GET");
+      const status = await metaGraphRequest(creationId, new URLSearchParams({ fields: "status_code,status", access_token: accessToken }), "GET");
       if (status.status_code === "FINISHED") { finished = true; break; }
       if (status.status_code === "ERROR" || status.status_code === "EXPIRED") {
         throw new Error(typeof status.status === "string" ? status.status : "A Meta não conseguiu processar a mídia.");
@@ -889,10 +889,10 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
     }
     if (!finished) throw new Error("A Meta ainda está processando a mídia. Tente publicar novamente em alguns instantes.");
 
-    const published = await instagramGraphRequest(`${account.instagramUserId}/media_publish`, new URLSearchParams({ creation_id: creationId, access_token: accessToken }));
+    const published = await metaGraphRequest(`${account.instagramUserId}/media_publish`, new URLSearchParams({ creation_id: creationId, access_token: accessToken }));
     const mediaId = typeof published.id === "string" ? published.id : null;
     if (!mediaId) throw new Error("A Meta não confirmou a publicação.");
-    const permalinkPayload = await instagramGraphRequest(mediaId, new URLSearchParams({ fields: "id,permalink", access_token: accessToken }), "GET");
+    const permalinkPayload = await metaGraphRequest(mediaId, new URLSearchParams({ fields: "id,permalink", access_token: accessToken }), "GET");
     const permalink = typeof permalinkPayload.permalink === "string" ? permalinkPayload.permalink : null;
     await prisma.post.update({
       where: { id: post.id },
