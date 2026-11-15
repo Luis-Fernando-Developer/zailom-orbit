@@ -1183,6 +1183,7 @@ async function processScheduledInstagramPosts(): Promise<void> {
       where: {
         platform: "INSTAGRAM",
         status: "SCHEDULED",
+        format: { in: ["POST", "REEL", "CAROUSEL"] },
         scheduledAt: { lte: now },
       },
       select: {
