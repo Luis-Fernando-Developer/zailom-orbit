@@ -1180,7 +1180,7 @@ function AccountsPage() {
 
   return (
     <PageFrame page="accounts">
-      <div className="glass-note mb-5"><Link2 size={17} /><span>A conexão usa o login oficial do Instagram. O Orbit armazena o token criptografado no servidor e não expõe credenciais no navegador.</span></div>
+      <div className="glass-note mb-5"><Link2 size={17} /><span>A conexão usa a autenticação oficial da Meta para contas profissionais do Instagram. O Orbit armazena o token criptografado no servidor e não expõe credenciais no navegador.</span></div>
       {notice && <p className="inline-notice mb-4" role="status">{notice}</p>}
       {error && <p className="inline-notice mb-4" role="alert">{error}</p>}
 
@@ -1221,7 +1221,7 @@ function AccountsPage() {
               <span className="account-brand-icon">{item.name.slice(0, 1)}</span>
               <div className="min-w-0 flex-1">
                 <h3>{item.name}</h3>
-                <p>{item.provider} · {item.supportedFormats.join(', ')}</p>
+                <p>{item.provider} · Formatos previstos: {item.plannedFormats.join(', ')}</p>
                 <small className="table-muted">{item.state === 'COMING_SOON' ? 'Integração em preparação' : item.state === 'AVAILABLE' ? 'Pronta para conectar' : 'Conectada'}</small>
               </div>
               <span className="status status-agendado">{item.state === 'COMING_SOON' ? 'Em breve' : item.state === 'AVAILABLE' ? 'Disponível' : 'Conectado'}</span>
@@ -1253,13 +1253,13 @@ function AccountsPage() {
       </section>
 
       <section className="panel permissions-panel mt-5">
-        <SectionHeading title="Compatibilidade desta versão" description="O envio direto está habilitado para os formatos compatíveis com o fluxo Instagram Login." />
+        <SectionHeading title="Compatibilidade desta versão" description="Formatos contemplados pela integração atual com a API da Meta." />
         <div className="schedule-summary">
           <div><strong>01</strong><span>Post de imagem JPEG</span></div>
           <div><strong>02</strong><span>Reels em vídeo MP4</span></div>
           <div><strong>03</strong><span>Carrossel de 2 a 10 mídias JPEG/MP4</span></div>
         </div>
-        <p className="integration-note mt-3">Stories, métricas avançadas e publicação automática no horário agendado ainda não estão habilitados. A publicação manual é confirmada pela API da Meta.</p>
+        <p className="integration-note mt-3">Stories e métricas avançadas ainda não estão habilitados. O agendamento automático está ativo para posts, Reels e carrosséis; a publicação manual é confirmada pela API da Meta.</p>
       </section>
     </PageFrame>
   )
