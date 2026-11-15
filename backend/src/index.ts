@@ -1167,8 +1167,91 @@ if (existsSync(frontendDist)) {
   });
 }
 
+
+const scheduledPublishIntervalMs = 30_000;
+const scheduledPublishRetryDelayMs = 5 * 60 * 1000;
+const scheduledPublishLastAttempt = new Map<string, number>();
+let scheduledPublishWorkerRunning = false;
+
+async function processScheduledInstagramPosts(): Promise<void> {
+  if (scheduledPublishWorkerRunning) return;
+  scheduledPublishWorkerRunning = true;
+
+  try {
+    const now = new Date();
+    const duePosts = await prisma.post.findMany({
+      where: {
+        platform: "INSTAGRAM",
+        status: "SCHEDULED",
+        scheduledAt: { lte: now },
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        workspace: { select: { ownerId: true } },
+      },
+      orderBy: { scheduledAt: "asc" },
+      take: 10,
+    });
+
+    for (const post of duePosts) {
+      const lastAttempt = scheduledPublishLastAttempt.get(post.id) ?? 0;
+      if (Date.now() - lastAttempt < scheduledPublishRetryDelayMs) continue;
+
+      scheduledPublishLastAttempt.set(post.id, Date.now());
+      let sessionToken: string | null = null;
+
+      try {
+        sessionToken = await createSession(post.workspace.ownerId);
+        const response = await fetch(`http://127.0.0.1:${port}/api/instagram/publish/${encodeURIComponent(post.id)}`, {
+          method: "POST",
+          headers: {
+            Cookie: `${sessionCookieName}=${sessionToken}`,
+            Origin: appOrigin,
+          },
+        });
+
+        if (!response.ok) {
+          const details = (await response.text()).slice(0, 1000);
+          app.log.error(
+            { postId: post.id, statusCode: response.status, response: details },
+            "Scheduled Instagram publication failed",
+          );
+          continue;
+        }
+
+        scheduledPublishLastAttempt.delete(post.id);
+        app.log.info({ postId: post.id }, "Scheduled Instagram publication completed");
+      } catch (error) {
+        app.log.error({ err: error, postId: post.id }, "Scheduled Instagram worker failed");
+      } finally {
+        if (sessionToken) {
+          await prisma.session.deleteMany({ where: { tokenHash: hashToken(sessionToken) } }).catch((error: unknown) => {
+            app.log.error({ err: error, postId: post.id }, "Could not remove temporary scheduler session");
+          });
+        }
+      }
+    }
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [postId, attemptedAt] of scheduledPublishLastAttempt) {
+      if (attemptedAt < cutoff) scheduledPublishLastAttempt.delete(postId);
+    }
+  } catch (error) {
+    app.log.error({ err: error }, "Scheduled Instagram worker could not load due posts");
+  } finally {
+    scheduledPublishWorkerRunning = false;
+  }
+}
+
 try {
   await app.listen({ port, host });
+  app.log.info({ intervalMs: scheduledPublishIntervalMs }, "Scheduled Instagram worker started");
+  const scheduledPublishTimer = setInterval(() => {
+    void processScheduledInstagramPosts();
+  }, scheduledPublishIntervalMs);
+  scheduledPublishTimer.unref();
+  void processScheduledInstagramPosts();
 } catch (error) {
   app.log.error(error);
   await app.close();
