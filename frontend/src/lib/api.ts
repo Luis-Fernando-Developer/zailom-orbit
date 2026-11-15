@@ -227,7 +227,7 @@ export interface SocialIntegration {
   name: string
   provider: string
   authentication: 'META_OAUTH' | 'OAUTH_2' | 'OAUTH_2_PKCE' | 'NONE'
-  supportedFormats: string[]
+  plannedFormats: string[]
   capabilities: {
     connect: boolean
     publish: boolean
