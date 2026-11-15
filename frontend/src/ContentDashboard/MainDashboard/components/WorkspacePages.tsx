@@ -26,7 +26,7 @@ import {
   Trash2,
   UsersRound,
 } from 'lucide-react'
-import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, getSocialIntegrations, type ApiPost, type InstagramConnection, type SocialIntegration } from '@/lib/api'
+import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, getSocialIntegrations, getFacebookStatus, getFacebookConnectUrl, disconnectFacebook, publishFacebookPost, type ApiPost, type InstagramConnection, type FacebookConnection, type SocialIntegration } from '@/lib/api'
 import { getAcceptForRule, getAvailableFormats, getFormatRule } from '@/config/social-platform-rules'
 
 export type WorkspacePage =
@@ -1109,6 +1109,10 @@ function AnalyticsPage() {
 
 function AccountsPage() {
   const [connection, setConnection] = useState<InstagramConnection | null>(null)
+  const [facebookConnection, setFacebookConnection] = useState<FacebookConnection | null>(null)
+  const [facebookPosts, setFacebookPosts] = useState<ApiPost[]>([])
+  const [isDisconnectingFacebook, setIsDisconnectingFacebook] = useState(false)
+  const [facebookPublishingId, setFacebookPublishingId] = useState<string | null>(null)
   const [integrations, setIntegrations] = useState<SocialIntegration[]>([])
   const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -1121,10 +1125,12 @@ function AccountsPage() {
     setIsLoading(true)
     setError('')
     try {
-      const [status, workspacePosts, catalog] = await Promise.all([getInstagramStatus(), getPosts(), getSocialIntegrations()])
+      const [status, fbStatus, workspacePosts, catalog] = await Promise.all([getInstagramStatus(), getFacebookStatus(), getPosts(), getSocialIntegrations()])
       setConnection(status)
+      setFacebookConnection(fbStatus)
       setIntegrations(catalog.integrations)
       setPosts(workspacePosts.filter((post) => post.platform === 'INSTAGRAM' && post.status !== 'PUBLISHED'))
+      setFacebookPosts(workspacePosts.filter((post) => post.platform === 'FACEBOOK' && post.status !== 'PUBLISHED'))
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a integração.')
     } finally {
@@ -1136,10 +1142,14 @@ function AccountsPage() {
     void loadInstagram()
     const params = new URLSearchParams(window.location.search)
     const result = params.get('instagram')
+    const facebookResult = params.get('facebook')
     if (result === 'connected') setNotice('Instagram conectado com sucesso. Sua conta já está pronta para publicar.')
     if (result === 'error') setError(params.get('reason') || 'Não foi possível conectar o Instagram.')
-    if (result) {
+    if (facebookResult === 'connected') setNotice('Página do Facebook conectada com sucesso. Já é possível publicar posts de texto.')
+    if (facebookResult === 'error') setError(params.get('reason') || 'Não foi possível conectar o Facebook.')
+    if (result || facebookResult) {
       params.delete('instagram')
+      params.delete('facebook')
       params.delete('reason')
       const query = params.toString()
       window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
@@ -1158,6 +1168,38 @@ function AccountsPage() {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível desconectar a conta.')
     } finally {
       setIsDisconnecting(false)
+    }
+  }
+
+  async function handleFacebookDisconnect() {
+    if (!window.confirm('Deseja realmente desconectar a Página do Facebook?')) return
+    setIsDisconnectingFacebook(true)
+    setError('')
+    try {
+      await disconnectFacebook()
+      setFacebookConnection({ connected: false, pages: [] })
+      setNotice('Página do Facebook desconectada.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível desconectar o Facebook.')
+    } finally {
+      setIsDisconnectingFacebook(false)
+    }
+  }
+
+  async function handleFacebookPublish(post: ApiPost) {
+    setFacebookPublishingId(post.id)
+    setError('')
+    setNotice('')
+    try {
+      const result = await publishFacebookPost(post.id)
+      setFacebookPosts((current) => current.filter((item) => item.id !== post.id))
+      setNotice('Publicação enviada à Página do Facebook com sucesso.')
+      if (result.permalink) window.open(result.permalink, '_blank', 'noopener,noreferrer')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível publicar no Facebook.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } finally {
+      setFacebookPublishingId(null)
     }
   }
 
@@ -1210,6 +1252,53 @@ function AccountsPage() {
             </div>
             <a className="glass-button no-underline" href={getInstagramConnectUrl()}><Instagram size={15} /> Conectar Instagram</a>
           </div>
+        )}
+      </section>
+
+      <SectionHeading title="Facebook" description="Conecte uma Página para publicar conteúdos diretamente pelo Orbit." />
+      <section className="panel mb-5">
+        {facebookConnection?.connected && facebookConnection.pages.length ? facebookConnection.pages.map((page) => (
+          <article className="account-card" key={page.pageId}>
+            <span className="account-brand-icon"><Facebook size={22} /></span>
+            <div className="min-w-0 flex-1">
+              <h3>{page.pageName}</h3>
+              <p>Página conectada · ID {page.pageId}</p>
+              <small className="table-muted">Acesso válido até {new Date(page.tokenExpiresAt).toLocaleDateString('pt-BR')}</small>
+            </div>
+            <span className="status status-publicado">Conectado</span>
+            <button className="glass-button" disabled={isDisconnectingFacebook} onClick={() => void handleFacebookDisconnect()} type="button">
+              {isDisconnectingFacebook ? 'Desconectando...' : 'Desconectar'}
+            </button>
+          </article>
+        )) : (
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <span className="account-brand-icon"><Facebook size={24} /></span>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-white">Nenhuma Página conectada</h3>
+              <p className="text-sm text-white/60">Conecte uma Página do Facebook na qual seu perfil tenha permissão para criar conteúdo.</p>
+            </div>
+            <a className="glass-button no-underline" href={getFacebookConnectUrl()}><Facebook size={15} /> Conectar Facebook</a>
+          </div>
+        )}
+      </section>
+
+      <SectionHeading title="Publicações do Facebook" description="Nesta primeira etapa, o envio direto aceita posts de texto." />
+      <section className="panel content-list mb-5">
+        {!facebookConnection?.connected ? (
+          <p className="empty-state">Conecte uma Página do Facebook para liberar a publicação.</p>
+        ) : facebookPosts.length ? facebookPosts.map((post) => (
+          <article className="glass-row" key={post.id}>
+            <span className="metric-icon mint"><Facebook size={16} /></span>
+            <span className="min-w-0 flex-1">
+              <strong>{post.title}</strong>
+              <span>{post.format} · {post.mediaItems?.length ?? 0} mídia(s) · {post.status === 'SCHEDULED' ? 'Agendado' : 'Rascunho'}</span>
+            </span>
+            <button className="glass-button" disabled={facebookPublishingId !== null} onClick={() => void handleFacebookPublish(post)} type="button">
+              <Send size={14} /> {facebookPublishingId === post.id ? 'Publicando...' : 'Publicar agora'}
+            </button>
+          </article>
+        )) : (
+          <p className="empty-state">Não há publicações pendentes para o Facebook. Crie uma publicação selecionando Facebook como rede.</p>
         )}
       </section>
 
