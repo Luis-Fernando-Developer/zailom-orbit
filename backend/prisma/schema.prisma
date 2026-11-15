@@ -125,3 +125,17 @@ model InstagramOAuthState {
 
   @@index([expiresAt])
 }
+
+model FacebookPageAccount {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  pageId         String
+  pageName       String
+  encryptedToken String
+  tokenExpiresAt DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([workspaceId, pageId])
+  @@index([workspaceId])
+}
