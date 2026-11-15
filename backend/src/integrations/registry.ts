@@ -75,8 +75,8 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "Facebook",
     provider: "Meta",
     authentication: "META_OAUTH",
-    plannedFormats: ["POST", "STORY", "REEL", "VIDEO", "CAROUSEL"],
-    capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
+    plannedFormats: ["POST (texto)"],
+    capabilities: { connect: true, publish: true, scheduling: false, analytics: false, inbox: false },
   },
   TIKTOK: {
     platform: "TIKTOK",
