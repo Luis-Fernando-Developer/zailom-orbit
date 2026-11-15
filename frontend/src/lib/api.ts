@@ -268,3 +268,30 @@ export function publishInstagramPost(postId: string): Promise<{ success: boolean
     method: 'POST',
   })
 }
+
+export interface FacebookConnection {
+  connected: boolean
+  pages: Array<{
+    pageId: string
+    pageName: string
+    tokenExpiresAt: string
+  }>
+}
+
+export function getFacebookStatus(): Promise<FacebookConnection> {
+  return request<FacebookConnection>('/api/facebook/status')
+}
+
+export function getFacebookConnectUrl(): string {
+  return `${apiBaseUrl}/api/facebook/connect`
+}
+
+export function disconnectFacebook(): Promise<void> {
+  return request<void>('/api/facebook/disconnect', { method: 'POST' })
+}
+
+export function publishFacebookPost(postId: string): Promise<{ success: boolean; postId: string; permalink: string }> {
+  return request<{ success: boolean; postId: string; permalink: string }>(`/api/facebook/publish/${encodeURIComponent(postId)}`, {
+    method: 'POST',
+  })
+}
