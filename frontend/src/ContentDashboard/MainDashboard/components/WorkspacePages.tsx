@@ -415,7 +415,7 @@ function CalendarPage() {
       const created = await createPost({
         title: title.trim(),
         caption: '',
-        platform: 'INSTAGRAM',
+        platform: draftPlatform,
         format: 'POST',
         status: 'SCHEDULED',
         scheduledAt: scheduledAt.toISOString(),
@@ -691,7 +691,8 @@ function PostsPage() {
   const [filter, setFilter] = useState('Todas')
   const [showForm, setShowForm] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
-  const [posts, setPosts] = useState<ApiPost[]>([])
+  const [draftPlatform, setDraftPlatform] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
+  const [posts, setPosts = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -731,6 +732,7 @@ function PostsPage() {
       })
       setPosts((current) => [created, ...current])
       setDraftTitle('')
+      setDraftPlatform('INSTAGRAM')
       setShowForm(false)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível criar o rascunho.')
@@ -762,6 +764,17 @@ function PostsPage() {
           <label>
             Comece com uma ideia
             <input autoFocus required value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="Escreva um título para o rascunho..." />
+          </label>
+          <label>
+            Rede social
+            <GlassSelect
+              value={draftPlatform}
+              onChange={(value) => setDraftPlatform(value as 'INSTAGRAM' | 'FACEBOOK')}
+              options={[
+                { value: 'INSTAGRAM', label: 'Instagram' },
+                { value: 'FACEBOOK', label: 'Facebook' },
+              ]}
+            />
           </label>
           <button className="glass-button" disabled={isSaving} type="submit">
             <Check size={14} /> {isSaving ? 'Salvando...' : 'Criar rascunho'}
