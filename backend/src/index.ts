@@ -4,7 +4,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { Prisma, PrismaClient, type PostFormat, type PostStatus, type SocialPlatform } from "@prisma/client";
-import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual, createCipheriv, createDecipheriv } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -407,6 +407,304 @@ app.post("/api/auth/logout", async (request, reply) => {
   }
   reply.clearCookie(sessionCookieName, { path: "/" });
   return reply.code(204).send();
+});
+
+
+const instagramApiVersion = process.env.INSTAGRAM_API_VERSION ?? "v23.0";
+const instagramRedirectUri = process.env.INSTAGRAM_REDIRECT_URI ?? "";
+const instagramPublicApiUrl = (process.env.API_PUBLIC_URL ?? "").replace(/\/$/, "");
+const instagramScopes = ["instagram_business_basic", "instagram_business_content_publish"];
+
+function instagramEncryptionKey(): Buffer {
+  const value = process.env.INSTAGRAM_TOKEN_ENCRYPTION_KEY ?? "";
+  if (!/^[a-fA-F0-9]{64}$/.test(value)) throw new Error("INSTAGRAM_TOKEN_ENCRYPTION_KEY precisa conter 64 caracteres hexadecimais.");
+  return Buffer.from(value, "hex");
+}
+
+function encryptInstagramToken(token: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", instagramEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  return [iv.toString("hex"), cipher.getAuthTag().toString("hex"), encrypted.toString("hex")].join(".");
+}
+
+function decryptInstagramToken(value: string): string {
+  const [ivHex, tagHex, encryptedHex] = value.split(".");
+  if (!ivHex || !tagHex || !encryptedHex) throw new Error("Token do Instagram inválido.");
+  const decipher = createDecipheriv("aes-256-gcm", instagramEncryptionKey(), Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  return Buffer.concat([decipher.update(Buffer.from(encryptedHex, "hex")), decipher.final()]).toString("utf8");
+}
+
+function instagramMediaSignature(postId: string, mediaId: string, expires: string): string {
+  const secret = process.env.INSTAGRAM_TOKEN_ENCRYPTION_KEY ?? "";
+  return createHmac("sha256", secret).update(`${postId}.${mediaId}.${expires}`).digest("hex");
+}
+
+async function instagramGraphRequest(path: string, params: URLSearchParams, method: "GET" | "POST" = "POST") {
+  const url = new URL(`https://graph.instagram.com/${instagramApiVersion}/${path}`);
+  const response = await fetch(method === "GET" ? `${url}? ${params}`.replace("? ", "?") : url, method === "POST" ? {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  } : undefined);
+  const payload = await response.json() as Record<string, unknown>;
+  if (!response.ok || payload.error) {
+    const error = payload.error as { message?: string } | undefined;
+    throw new Error(error?.message ?? "A Meta não conseguiu concluir a operação.");
+  }
+  return payload;
+}
+
+app.get("/api/instagram/status", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const account = await prisma.instagramAccount.findUnique({ where: { workspaceId: user.workspaceId } });
+  if (!account) return { connected: false };
+  return {
+    connected: true,
+    account: { username: account.username, instagramUserId: account.instagramUserId, tokenExpiresAt: account.tokenExpiresAt },
+  };
+});
+
+app.get("/api/instagram/connect", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const appId = process.env.INSTAGRAM_APP_ID;
+  if (!appId || !instagramRedirectUri) {
+    return reply.code(503).send({ error: { code: "INSTAGRAM_NOT_CONFIGURED", message: "Configure INSTAGRAM_APP_ID e INSTAGRAM_REDIRECT_URI no ambiente do Orbit." } });
+  }
+  const state = randomBytes(32).toString("hex");
+  await prisma.instagramOAuthState.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+  await prisma.instagramOAuthState.create({
+    data: { state, userId: user.id, workspaceId: user.workspaceId, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+  });
+  const authorize = new URL("https://www.instagram.com/oauth/authorize");
+  authorize.searchParams.set("client_id", appId);
+  authorize.searchParams.set("redirect_uri", instagramRedirectUri);
+  authorize.searchParams.set("response_type", "code");
+  authorize.searchParams.set("scope", instagramScopes.join(","));
+  authorize.searchParams.set("state", state);
+  return reply.redirect(authorize.toString());
+});
+
+app.get<{ Querystring: { code?: string; state?: string; error?: string; error_reason?: string; error_description?: string } }>("/api/instagram/callback", async (request, reply) => {
+  const { code, state, error: oauthError, error_description: errorDescription } = request.query;
+  const failUrl = new URL("/", appOrigin);
+  failUrl.searchParams.set("instagram", "error");
+  if (oauthError || !code || !state) {
+    failUrl.searchParams.set("reason", errorDescription ?? oauthError ?? "Autorização cancelada.");
+    return reply.redirect(`${failUrl.toString()}#page-accounts`);
+  }
+
+  const savedState = await prisma.instagramOAuthState.findUnique({ where: { state } });
+  await prisma.instagramOAuthState.deleteMany({ where: { state } });
+  if (!savedState || savedState.expiresAt <= new Date()) {
+    failUrl.searchParams.set("reason", "A autorização expirou. Tente conectar novamente.");
+    return reply.redirect(`${failUrl.toString()}#page-accounts`);
+  }
+
+  try {
+    const appId = process.env.INSTAGRAM_APP_ID;
+    const appSecret = process.env.INSTAGRAM_APP_SECRET;
+    if (!appId || !appSecret || !instagramRedirectUri) throw new Error("Integração do Instagram não configurada no servidor.");
+
+    const shortTokenBody = new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      grant_type: "authorization_code",
+      redirect_uri: instagramRedirectUri,
+      code,
+    });
+    const shortResponse = await fetch("https://api.instagram.com/oauth/access_token", { method: "POST", body: shortTokenBody });
+    const shortPayload = await shortResponse.json() as { access_token?: string; user_id?: number; error_message?: string };
+    if (!shortResponse.ok || !shortPayload.access_token) throw new Error(shortPayload.error_message ?? "Não foi possível obter o token do Instagram.");
+
+    const longUrl = new URL("https://graph.instagram.com/access_token");
+    longUrl.searchParams.set("grant_type", "ig_exchange_token");
+    longUrl.searchParams.set("client_secret", appSecret);
+    longUrl.searchParams.set("access_token", shortPayload.access_token);
+    const longResponse = await fetch(longUrl);
+    const longPayload = await longResponse.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
+    if (!longResponse.ok || !longPayload.access_token) throw new Error(longPayload.error?.message ?? "Não foi possível gerar um token de longa duração.");
+
+    const profileUrl = new URL(`https://graph.instagram.com/${instagramApiVersion}/me`);
+    profileUrl.searchParams.set("fields", "user_id,username");
+    profileUrl.searchParams.set("access_token", longPayload.access_token);
+    const profileResponse = await fetch(profileUrl);
+    const profile = await profileResponse.json() as { user_id?: string; id?: string; username?: string; error?: { message?: string } };
+    const instagramUserId = profile.user_id ?? profile.id;
+    if (!profileResponse.ok || !instagramUserId || !profile.username) throw new Error(profile.error?.message ?? "Não foi possível identificar a conta profissional.");
+
+    await prisma.instagramAccount.upsert({
+      where: { workspaceId: savedState.workspaceId },
+      create: {
+        workspaceId: savedState.workspaceId,
+        instagramUserId,
+        username: profile.username,
+        encryptedToken: encryptInstagramToken(longPayload.access_token),
+        tokenExpiresAt: new Date(Date.now() + (longPayload.expires_in ?? 5184000) * 1000),
+      },
+      update: {
+        instagramUserId,
+        username: profile.username,
+        encryptedToken: encryptInstagramToken(longPayload.access_token),
+        tokenExpiresAt: new Date(Date.now() + (longPayload.expires_in ?? 5184000) * 1000),
+      },
+    });
+    const successUrl = new URL("/", appOrigin);
+    successUrl.searchParams.set("instagram", "connected");
+    return reply.redirect(`${successUrl.toString()}#page-accounts`);
+  } catch (error) {
+    failUrl.searchParams.set("reason", error instanceof Error ? error.message : "Falha ao conectar o Instagram.");
+    return reply.redirect(`${failUrl.toString()}#page-accounts`);
+  }
+});
+
+app.post("/api/instagram/disconnect", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  await prisma.instagramAccount.deleteMany({ where: { workspaceId: user.workspaceId } });
+  return reply.code(204).send();
+});
+
+app.get<{ Params: { postId: string; mediaId: string }; Querystring: { expires?: string; signature?: string } }>("/api/instagram/media/:postId/:mediaId", async (request, reply) => {
+  const { postId, mediaId } = request.params;
+  const expires = request.query.expires ?? "";
+  const signature = request.query.signature ?? "";
+  if (!/^\d+$/.test(expires) || Number(expires) < Date.now() || Number(expires) > Date.now() + 60 * 60 * 1000) {
+    return reply.code(403).send({ error: "MEDIA_URL_EXPIRED" });
+  }
+  const expected = Buffer.from(instagramMediaSignature(postId, mediaId, expires));
+  const received = Buffer.from(signature);
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) return reply.code(403).send({ error: "INVALID_MEDIA_SIGNATURE" });
+  const media = await prisma.postMedia.findFirst({
+    where: { id: mediaId, postId },
+    select: { data: true, mimeType: true, fileName: true },
+  });
+  if (!media || !["image/jpeg", "video/mp4"].includes(media.mimeType)) return reply.code(404).send();
+  reply.header("Content-Type", media.mimeType);
+  reply.header("Content-Length", media.data.length);
+  reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(media.fileName)}"`);
+  reply.header("Cache-Control", "public, max-age=300");
+  reply.header("X-Content-Type-Options", "nosniff");
+  return reply.send(Buffer.from(media.data));
+});
+
+app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
+  config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+}, async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  if (!instagramPublicApiUrl.startsWith("https://")) {
+    return reply.code(503).send({ error: { code: "INSTAGRAM_MEDIA_URL_NOT_CONFIGURED", message: "Configure API_PUBLIC_URL com a URL HTTPS pública da API para que a Meta consiga buscar as mídias." } });
+  }
+
+  const [account, post] = await Promise.all([
+    prisma.instagramAccount.findUnique({ where: { workspaceId: user.workspaceId } }),
+    prisma.post.findFirst({
+      where: { id: request.params.postId, workspaceId: user.workspaceId, platform: "INSTAGRAM" },
+      include: { mediaItems: { orderBy: { sortOrder: "asc" } } },
+    }),
+  ]);
+  if (!account) return reply.code(409).send({ error: { code: "INSTAGRAM_NOT_CONNECTED", message: "Conecte uma conta profissional do Instagram antes de publicar." } });
+  if (!post) return reply.code(404).send({ error: { code: "POST_NOT_FOUND", message: "Publicação não encontrada." } });
+  if (post.status === "PUBLISHED") return reply.code(409).send({ error: { code: "ALREADY_PUBLISHED", message: "Esta publicação já foi enviada." } });
+  if (!post.mediaItems.length) return reply.code(400).send({ error: { code: "MEDIA_REQUIRED", message: "Adicione mídia antes de publicar no Instagram." } });
+  if (!["POST", "REEL", "CAROUSEL"].includes(post.format)) {
+    return reply.code(400).send({ error: { code: "FORMAT_NOT_SUPPORTED", message: "Nesta primeira versão, a API oficial permite publicar Post, Reels e Carrossel. Stories ainda não estão habilitados neste fluxo." } });
+  }
+  if (post.format === "POST" && (post.mediaItems.length !== 1 || post.mediaItems[0].mimeType !== "image/jpeg")) {
+    return reply.code(400).send({ error: { code: "INVALID_POST_MEDIA", message: "Post de imagem exige um arquivo JPEG." } });
+  }
+  if (post.format === "REEL" && (post.mediaItems.length !== 1 || post.mediaItems[0].mimeType !== "video/mp4")) {
+    return reply.code(400).send({ error: { code: "INVALID_REEL_MEDIA", message: "Reels exige um único vídeo MP4." } });
+  }
+  if (post.format === "CAROUSEL" && (post.mediaItems.length < 2 || post.mediaItems.length > 10 || post.mediaItems.some((item) => !["image/jpeg", "video/mp4"].includes(item.mimeType)))) {
+    return reply.code(400).send({ error: { code: "INVALID_CAROUSEL_MEDIA", message: "Carrossel exige de 2 a 10 mídias JPEG ou MP4." } });
+  }
+  if (account.tokenExpiresAt.getTime() < Date.now() + 24 * 60 * 60 * 1000) {
+    try {
+      const refreshUrl = new URL("https://graph.instagram.com/refresh_access_token");
+      refreshUrl.searchParams.set("grant_type", "ig_refresh_token");
+      refreshUrl.searchParams.set("access_token", decryptInstagramToken(account.encryptedToken));
+      const refreshedResponse = await fetch(refreshUrl);
+      const refreshed = await refreshedResponse.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
+      if (!refreshedResponse.ok || !refreshed.access_token) throw new Error(refreshed.error?.message ?? "Token expirado. Reconecte sua conta.");
+      account.encryptedToken = encryptInstagramToken(refreshed.access_token);
+      account.tokenExpiresAt = new Date(Date.now() + (refreshed.expires_in ?? 5184000) * 1000);
+      await prisma.instagramAccount.update({ where: { id: account.id }, data: { encryptedToken: account.encryptedToken, tokenExpiresAt: account.tokenExpiresAt } });
+    } catch {
+      return reply.code(401).send({ error: { code: "INSTAGRAM_TOKEN_EXPIRED", message: "A autorização do Instagram expirou. Desconecte e conecte novamente a conta." } });
+    }
+  }
+  const accessToken = decryptInstagramToken(account.encryptedToken);
+  const mediaUrl = (mediaId: string) => {
+    const expires = String(Date.now() + 45 * 60 * 1000);
+    const signature = instagramMediaSignature(post.id, mediaId, expires);
+    return `${instagramPublicApiUrl}/api/instagram/media/${encodeURIComponent(post.id)}/${encodeURIComponent(mediaId)}?expires=${expires}&signature=${signature}`;
+  };
+  const createContainer = async (params: URLSearchParams) => {
+    params.set("access_token", accessToken);
+    return instagramGraphRequest(`${account.instagramUserId}/media`, params);
+  };
+  try {
+    let creationId = "";
+    if (post.format === "CAROUSEL") {
+      const children: string[] = [];
+      for (const media of post.mediaItems) {
+        const childParams = new URLSearchParams({
+          is_carousel_item: "true",
+          ...(media.mimeType === "image/jpeg"
+            ? { image_url: mediaUrl(media.id) }
+            : { media_type: "VIDEO", video_url: mediaUrl(media.id) }),
+        });
+        const child = await createContainer(childParams);
+        if (typeof child.id !== "string") throw new Error("A Meta não retornou o identificador de uma mídia do carrossel.");
+        children.push(child.id);
+      }
+      const parent = await createContainer(new URLSearchParams({
+        media_type: "CAROUSEL",
+        children: children.join(","),
+        caption: post.caption,
+      }));
+      if (typeof parent.id !== "string") throw new Error("A Meta não retornou o identificador do carrossel.");
+      creationId = parent.id;
+    } else {
+      const media = post.mediaItems[0];
+      const params = post.format === "REEL"
+        ? new URLSearchParams({ media_type: "REELS", video_url: mediaUrl(media.id), caption: post.caption, share_to_feed: "true" })
+        : new URLSearchParams({ image_url: mediaUrl(media.id), caption: post.caption });
+      const container = await createContainer(params);
+      if (typeof container.id !== "string") throw new Error("A Meta não retornou o identificador da publicação.");
+      creationId = container.id;
+    }
+
+    let finished = false;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const status = await instagramGraphRequest(creationId, new URLSearchParams({ fields: "status_code,status" }), "GET");
+      if (status.status_code === "FINISHED") { finished = true; break; }
+      if (status.status_code === "ERROR" || status.status_code === "EXPIRED") {
+        throw new Error(typeof status.status === "string" ? status.status : "A Meta não conseguiu processar a mídia.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    if (!finished) throw new Error("A Meta ainda está processando a mídia. Tente publicar novamente em alguns instantes.");
+
+    const published = await instagramGraphRequest(`${account.instagramUserId}/media_publish`, new URLSearchParams({ creation_id: creationId, access_token: accessToken }));
+    const mediaId = typeof published.id === "string" ? published.id : null;
+    if (!mediaId) throw new Error("A Meta não confirmou a publicação.");
+    const permalinkPayload = await instagramGraphRequest(mediaId, new URLSearchParams({ fields: "id,permalink", access_token: accessToken }), "GET");
+    const permalink = typeof permalinkPayload.permalink === "string" ? permalinkPayload.permalink : null;
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { status: "PUBLISHED", scheduledAt: null, instagramMediaId: mediaId, instagramPermalink: permalink, publishedAt: new Date() },
+    });
+    return reply.send({ success: true, mediaId, permalink });
+  } catch (error) {
+    request.log.error({ err: error, postId: post.id }, "Instagram publishing failed");
+    return reply.code(502).send({ error: { code: "INSTAGRAM_PUBLISH_FAILED", message: error instanceof Error ? error.message : "Não foi possível publicar no Instagram." } });
+  }
 });
 
 app.get("/api/posts", async (request, reply) => {
