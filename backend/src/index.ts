@@ -682,7 +682,7 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
     longTokenUrl.searchParams.set("grant_type", "fb_exchange_token");
     longTokenUrl.searchParams.set("client_id", appId);
     longTokenUrl.searchParams.set("client_secret", appSecret);
-    longTokenUrl.searchParams.set("fb_exchange_token", tokenPayload.access_token);
+    longTokenUrl.searchParams.set("fb_exchange_token", tokenPayload.access_token!);
     const longTokenPayload = await fetch(longTokenUrl).then(async (response) => {
       const body = await response.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
       if (!response.ok || !body.access_token) throw new Error(body.error?.message ?? "Não foi possível estender a validade do token do Facebook.");
@@ -691,7 +691,7 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
 
     const accountsUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/me/accounts`);
     accountsUrl.searchParams.set("fields", "id,name,access_token,tasks");
-    accountsUrl.searchParams.set("access_token", longTokenPayload.access_token);
+    accountsUrl.searchParams.set("access_token", longTokenPayload.access_token!);
     const accountsPayload = await fetch(accountsUrl).then(async (response) => {
       const body = await response.json() as { data?: Array<{ id?: string; name?: string; access_token?: string; tasks?: string[] }>; error?: { message?: string } };
       if (!response.ok || body.error) throw new Error(body.error?.message ?? "Não foi possível listar as Páginas do Facebook.");
