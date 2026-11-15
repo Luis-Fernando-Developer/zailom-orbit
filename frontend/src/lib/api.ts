@@ -206,3 +206,31 @@ export async function uploadPostMedia(id: string, file: File): Promise<void> {
 export function deletePostMedia(id: string): Promise<void> {
   return request<void>(`/api/posts/${encodeURIComponent(id)}/media`, { method: 'DELETE' })
 }
+
+
+export interface InstagramConnection {
+  connected: boolean
+  account?: {
+    username: string
+    instagramUserId: string
+    tokenExpiresAt: string
+  }
+}
+
+export function getInstagramStatus(): Promise<InstagramConnection> {
+  return request<InstagramConnection>('/api/instagram/status')
+}
+
+export function getInstagramConnectUrl(): string {
+  return `${apiBaseUrl}/api/instagram/connect`
+}
+
+export function disconnectInstagram(): Promise<void> {
+  return request<void>('/api/instagram/disconnect', { method: 'POST' })
+}
+
+export function publishInstagramPost(postId: string): Promise<{ success: boolean; mediaId: string; permalink: string | null }> {
+  return request<{ success: boolean; mediaId: string; permalink: string | null }>(`/api/instagram/publish/${encodeURIComponent(postId)}`, {
+    method: 'POST',
+  })
+}
