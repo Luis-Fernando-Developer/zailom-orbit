@@ -222,6 +222,26 @@ export function deletePostMedia(id: string): Promise<void> {
 }
 
 
+export interface SocialIntegration {
+  platform: SocialPlatform
+  name: string
+  provider: string
+  authentication: 'META_OAUTH' | 'OAUTH_2' | 'OAUTH_2_PKCE' | 'NONE'
+  supportedFormats: string[]
+  capabilities: {
+    connect: boolean
+    publish: boolean
+    scheduling: boolean
+    analytics: boolean
+    inbox: boolean
+  }
+  state: 'CONNECTED' | 'AVAILABLE' | 'COMING_SOON'
+}
+
+export function getSocialIntegrations(): Promise<{ integrations: SocialIntegration[] }> {
+  return request<{ integrations: SocialIntegration[] }>('/api/integrations')
+}
+
 export interface InstagramConnection {
   connected: boolean
   account?: {
