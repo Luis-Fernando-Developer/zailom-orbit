@@ -443,7 +443,8 @@ function instagramMediaSignature(postId: string, mediaId: string, expires: strin
 
 async function instagramGraphRequest(path: string, params: URLSearchParams, method: "GET" | "POST" = "POST") {
   const url = new URL(`https://graph.instagram.com/${instagramApiVersion}/${path}`);
-  const response = await fetch(method === "GET" ? `${url}? ${params}`.replace("? ", "?") : url, method === "POST" ? {
+  if (method === "GET") url.search = params.toString();
+  const response = await fetch(url, method === "POST" ? {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
