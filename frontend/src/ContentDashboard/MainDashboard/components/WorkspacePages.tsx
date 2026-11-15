@@ -1170,6 +1170,7 @@ function AccountsPage() {
       if (result.permalink) window.open(result.permalink, '_blank', 'noopener,noreferrer')
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível publicar no Instagram.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setPublishingId(null)
     }
