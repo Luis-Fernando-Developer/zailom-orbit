@@ -49,6 +49,20 @@ O frontend usa `http://localhost:3001` como API durante o desenvolvimento. A API
 - Cadastro ainda não inclui confirmação de e-mail nem recuperação de senha; esses fluxos devem ser definidos antes de abrir o cadastro ao público.
 - A página de Marketing permite criar rascunhos demonstrativos apenas em memória. Ela não cria campanhas reais nem se conecta às plataformas de anúncios.
 
+## Instagram Login API
+
+O passo inicial da integração usa o Instagram Login oficial para contas profissionais (Business ou Creator). Configure no ambiente do serviço:
+
+- `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET`: credenciais do app em Meta for Developers.
+- `INSTAGRAM_REDIRECT_URI`: URL pública exata cadastrada no app Meta, por padrão `https://orbit.zailom.com/api/instagram/callback`.
+- `INSTAGRAM_TOKEN_ENCRYPTION_KEY`: chave hexadecimal de 32 bytes (`openssl rand -hex 32`) para criptografar tokens em repouso.
+- `API_PUBLIC_URL`: origem HTTPS pública da API usada pela Meta para buscar os arquivos de mídia, por exemplo `https://api-orbit.zailom.com`.
+- `INSTAGRAM_API_VERSION`: versão da Graph API usada pelo app.
+
+A primeira entrega permite conectar/desconectar uma conta, consultar seu status e publicar manualmente posts JPEG, Reels MP4 e carrosséis de 2 a 10 itens JPEG/MP4. Stories e publicação automática no horário agendado ainda não fazem parte desta etapa. A Meta precisa conseguir acessar os links temporários e assinados das mídias; por isso, `API_PUBLIC_URL` deve apontar para a API em HTTPS.
+
+A aplicação Meta precisa ter o produto Instagram Login configurado e as permissões `instagram_business_basic` e `instagram_business_content_publish`. O acesso em produção para contas de terceiros depende da análise/permissões exigidas pela Meta.
+
 ## Docker Compose
 
 O Compose provisiona o PostgreSQL, espera o banco ficar saudável, aplica migrações ao iniciar a API e persiste os dados no volume `orbit_postgres_data`. Copie `.env.example` para `.env`, configure uma senha longa composta por caracteres seguros para URL e confirme que a rede externa `zailomOrbit_net` (usada pelo Traefik) já existe antes de iniciar:
