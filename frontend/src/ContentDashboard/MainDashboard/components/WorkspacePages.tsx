@@ -1326,7 +1326,14 @@ function AccountsPage() {
                 <p>{item.provider} · Formatos previstos: {item.plannedFormats.join(', ')}</p>
                 <small className="table-muted">{item.state === 'COMING_SOON' ? 'Integração em preparação' : item.state === 'AVAILABLE' ? 'Pronta para conectar' : 'Conectada'}</small>
               </div>
-              <span className="status status-agendado">{item.state === 'COMING_SOON' ? 'Em breve' : item.state === 'AVAILABLE' ? 'Disponível' : 'Conectado'}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="status status-agendado">{item.platform === 'FACEBOOK' && facebookConnection?.connected ? 'Conectado' : item.state === 'COMING_SOON' ? 'Em breve' : item.state === 'AVAILABLE' ? 'Disponível' : 'Conectado'}</span>
+                {item.platform === 'FACEBOOK' && !facebookConnection?.connected && (
+                  <a className="glass-button no-underline" href={getFacebookConnectUrl()}>
+                    <Facebook size={14} /> Conectar
+                  </a>
+                )}
+              </div>
             </article>
           ))}
         </div>
