@@ -725,7 +725,7 @@ function PostsPage() {
       const created = await createPost({
         title: draftTitle.trim(),
         caption: '',
-        platform: 'INSTAGRAM',
+        platform: draftPlatform,
         format: 'POST',
         status: 'DRAFT',
         scheduledAt: null,
