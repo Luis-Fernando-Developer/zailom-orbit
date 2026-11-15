@@ -7,6 +7,7 @@ import { Prisma, PrismaClient, type PostFormat, type PostStatus, type SocialPlat
 import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual, createCipheriv, createDecipheriv } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { getSocialProviderCatalog } from "./integrations/registry.js";
 
 const app = Fastify({ logger: true, trustProxy: process.env.TRUST_PROXY === "true", bodyLimit: 12 * 1024 * 1024 });
 const prisma = new PrismaClient();
@@ -475,6 +476,24 @@ app.get("/api/instagram/status", async (request, reply) => {
     connected: true,
     account: { username: account.username, instagramUserId: account.instagramUserId, tokenExpiresAt: account.tokenExpiresAt },
   };
+});
+
+app.get("/api/integrations", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  // Instagram remains backed by its existing encrypted-token model. Other
+  // providers appear as coming soon until their own OAuth and publishing
+  // adapters are implemented; drafts never imply an active connection.
+  const instagramAccount = await prisma.instagramAccount.findUnique({
+    where: { workspaceId: user.workspaceId },
+    select: { id: true },
+  });
+  const connectedPlatforms = new Set<SocialPlatform>(
+    instagramAccount ? ["INSTAGRAM"] : [],
+  );
+
+  return { integrations: getSocialProviderCatalog(connectedPlatforms) };
 });
 
 app.get("/api/instagram/connect", async (request, reply) => {
