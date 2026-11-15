@@ -450,10 +450,18 @@ async function instagramGraphRequest(path: string, params: URLSearchParams, meth
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
   } : undefined);
-  const payload = await response.json() as Record<string, unknown>;
+  const responseText = await response.text();
+  let payload: Record<string, unknown>;
+  try {
+    payload = responseText ? JSON.parse(responseText) as Record<string, unknown> : {};
+  } catch {
+    throw new Error(`A API da Meta respondeu com HTTP ${response.status}, mas retornou uma resposta inválida: ${responseText.slice(0, 400) || "sem conteúdo"}`);
+  }
   if (!response.ok || payload.error) {
-    const error = payload.error as { message?: string } | undefined;
-    throw new Error(error?.message ?? "A Meta não conseguiu concluir a operação.");
+    const error = payload.error as { message?: string; type?: string; code?: number; error_subcode?: number } | undefined;
+    const details = error?.message ?? "A Meta não informou o motivo da falha.";
+    const code = error?.code ? ` Código ${error.code}${error.error_subcode ? `/${error.error_subcode}` : ""}.` : "";
+    throw new Error(`Meta Graph API (HTTP ${response.status}): ${details}${code}`);
   }
   return payload;
 }
