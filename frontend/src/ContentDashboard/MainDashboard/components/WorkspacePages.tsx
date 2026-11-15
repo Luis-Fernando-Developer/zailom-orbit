@@ -26,7 +26,7 @@ import {
   Trash2,
   UsersRound,
 } from 'lucide-react'
-import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, type ApiPost, type InstagramConnection } from '@/lib/api'
+import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, getSocialIntegrations, type ApiPost, type InstagramConnection, type SocialIntegration } from '@/lib/api'
 import { getAcceptForRule, getAvailableFormats, getFormatRule } from '@/config/social-platform-rules'
 
 export type WorkspacePage =
@@ -1109,6 +1109,7 @@ function AnalyticsPage() {
 
 function AccountsPage() {
   const [connection, setConnection] = useState<InstagramConnection | null>(null)
+  const [integrations, setIntegrations] = useState<SocialIntegration[]>([])
   const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
@@ -1120,8 +1121,9 @@ function AccountsPage() {
     setIsLoading(true)
     setError('')
     try {
-      const [status, workspacePosts] = await Promise.all([getInstagramStatus(), getPosts()])
+      const [status, workspacePosts, catalog] = await Promise.all([getInstagramStatus(), getPosts(), getSocialIntegrations()])
       setConnection(status)
+      setIntegrations(catalog.integrations)
       setPosts(workspacePosts.filter((post) => post.platform === 'INSTAGRAM' && post.status !== 'PUBLISHED'))
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a integração.')
@@ -1209,6 +1211,23 @@ function AccountsPage() {
             <a className="glass-button no-underline" href={getInstagramConnectUrl()}><Instagram size={15} /> Conectar Instagram</a>
           </div>
         )}
+      </section>
+
+      <SectionHeading title="Outras redes" description="A estrutura multirrede já está preparada. As próximas conexões serão liberadas por plataforma." />
+      <section className="panel mb-5">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {integrations.filter((item) => item.platform !== 'INSTAGRAM').map((item) => (
+            <article className="account-card" key={item.platform}>
+              <span className="account-brand-icon">{item.name.slice(0, 1)}</span>
+              <div className="min-w-0 flex-1">
+                <h3>{item.name}</h3>
+                <p>{item.provider} · {item.supportedFormats.join(', ')}</p>
+                <small className="table-muted">{item.state === 'COMING_SOON' ? 'Integração em preparação' : item.state === 'AVAILABLE' ? 'Pronta para conectar' : 'Conectada'}</small>
+              </div>
+              <span className="status status-agendado">{item.state === 'COMING_SOON' ? 'Em breve' : item.state === 'AVAILABLE' ? 'Disponível' : 'Conectado'}</span>
+            </article>
+          ))}
+        </div>
       </section>
 
       <SectionHeading title="Publicar pelo Orbit" description="Escolha uma publicação salva e envie para a conta conectada." />
