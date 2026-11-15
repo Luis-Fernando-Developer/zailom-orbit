@@ -11,7 +11,6 @@ import {
   Instagram,
   MessageCircle,
   RefreshCw,
-  Send,
   Sparkles,
   Users,
 } from 'lucide-react'
