@@ -600,6 +600,177 @@ app.post("/api/instagram/disconnect", async (request, reply) => {
   return reply.code(204).send();
 });
 
+
+const facebookRedirectUri = process.env.FACEBOOK_REDIRECT_URI ?? "";
+
+app.get("/api/facebook/status", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const pages = await prisma.facebookPageAccount.findMany({
+    where: { workspaceId: user.workspaceId },
+    select: { pageId: true, pageName: true, tokenExpiresAt: true },
+    orderBy: { pageName: "asc" },
+  });
+  return { connected: pages.length > 0, pages };
+});
+
+app.get("/api/facebook/connect", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const appId = process.env.FACEBOOK_APP_ID ?? process.env.INSTAGRAM_APP_ID;
+  if (!appId || !facebookRedirectUri) {
+    return reply.code(503).send({ error: { code: "FACEBOOK_NOT_CONFIGURED", message: "Configure FACEBOOK_REDIRECT_URI e as credenciais da aplicação Meta no ambiente do Orbit." } });
+  }
+
+  const state = randomBytes(32).toString("hex");
+  await prisma.instagramOAuthState.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+  await prisma.instagramOAuthState.create({
+    data: { state, userId: user.id, workspaceId: user.workspaceId, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+  });
+
+  const authorize = new URL("https://www.facebook.com/dialog/oauth");
+  authorize.searchParams.set("client_id", appId);
+  authorize.searchParams.set("redirect_uri", facebookRedirectUri);
+  authorize.searchParams.set("response_type", "code");
+  authorize.searchParams.set("state", state);
+  authorize.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
+  authorize.searchParams.set("auth_type", "rerequest");
+  return reply.redirect(authorize.toString());
+});
+
+app.get<{ Querystring: { code?: string; state?: string; error?: string; error_description?: string } }>("/api/facebook/callback", async (request, reply) => {
+  const { code, state, error: oauthError, error_description: errorDescription } = request.query;
+  const resultUrl = new URL("/", appOrigin);
+  resultUrl.searchParams.set("facebook", "error");
+  if (oauthError || !code || !state) {
+    resultUrl.searchParams.set("reason", errorDescription ?? oauthError ?? "Autorização do Facebook cancelada.");
+    return reply.redirect(`${resultUrl.toString()}#page-accounts`);
+  }
+
+  const savedState = await prisma.instagramOAuthState.findUnique({ where: { state } });
+  await prisma.instagramOAuthState.deleteMany({ where: { state } });
+  const callbackUser = await getAuthenticatedUser(request);
+  if (!savedState || savedState.expiresAt <= new Date() || !callbackUser || callbackUser.id !== savedState.userId || callbackUser.workspaceId !== savedState.workspaceId) {
+    resultUrl.searchParams.set("reason", "A autorização expirou. Tente conectar novamente.");
+    return reply.redirect(`${resultUrl.toString()}#page-accounts`);
+  }
+
+  try {
+    const appId = process.env.FACEBOOK_APP_ID ?? process.env.INSTAGRAM_APP_ID;
+    const appSecret = process.env.FACEBOOK_APP_SECRET ?? process.env.INSTAGRAM_APP_SECRET;
+    if (!appId || !appSecret || !facebookRedirectUri) throw new Error("Credenciais do Facebook não configuradas no servidor.");
+
+    const tokenUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/oauth/access_token`);
+    tokenUrl.searchParams.set("client_id", appId);
+    tokenUrl.searchParams.set("client_secret", appSecret);
+    tokenUrl.searchParams.set("redirect_uri", facebookRedirectUri);
+    tokenUrl.searchParams.set("code", code);
+    const tokenPayload = await fetch(tokenUrl).then(async (response) => {
+      const body = await response.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
+      if (!response.ok || !body.access_token) throw new Error(body.error?.message ?? "Não foi possível obter o token do Facebook.");
+      return body;
+    });
+
+    const longTokenUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/oauth/access_token`);
+    longTokenUrl.searchParams.set("grant_type", "fb_exchange_token");
+    longTokenUrl.searchParams.set("client_id", appId);
+    longTokenUrl.searchParams.set("client_secret", appSecret);
+    longTokenUrl.searchParams.set("fb_exchange_token", tokenPayload.access_token);
+    const longTokenPayload = await fetch(longTokenUrl).then(async (response) => {
+      const body = await response.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
+      if (!response.ok || !body.access_token) throw new Error(body.error?.message ?? "Não foi possível estender a validade do token do Facebook.");
+      return body;
+    });
+
+    const accountsUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/me/accounts`);
+    accountsUrl.searchParams.set("fields", "id,name,access_token,tasks");
+    accountsUrl.searchParams.set("access_token", longTokenPayload.access_token);
+    const accountsPayload = await fetch(accountsUrl).then(async (response) => {
+      const body = await response.json() as { data?: Array<{ id?: string; name?: string; access_token?: string; tasks?: string[] }>; error?: { message?: string } };
+      if (!response.ok || body.error) throw new Error(body.error?.message ?? "Não foi possível listar as Páginas do Facebook.");
+      return body;
+    });
+    const eligiblePages = (accountsPayload.data ?? []).filter((page) =>
+      page.id && page.name && page.access_token && (page.tasks ?? []).some((task) => ["CREATE_CONTENT", "MANAGE"].includes(task)),
+    );
+    if (!eligiblePages.length) throw new Error("Nenhuma Página com permissão de criação de conteúdo foi encontrada. Verifique se seu perfil tem acesso à Página e concedeu pages_manage_posts, pages_read_engagement e pages_show_list.");
+    if (eligiblePages.length > 1) throw new Error("Mais de uma Página foi encontrada. Nesta primeira versão, deixe apenas uma Página selecionada para o Orbit na autorização da Meta.");
+
+    const page = eligiblePages[0];
+    const expiresAt = new Date(Date.now() + (longTokenPayload.expires_in ?? tokenPayload.expires_in ?? 60 * 24 * 60 * 60) * 1000);
+    await prisma.facebookPageAccount.upsert({
+      where: { workspaceId_pageId: { workspaceId: savedState.workspaceId, pageId: page.id! } },
+      create: {
+        workspaceId: savedState.workspaceId,
+        pageId: page.id!,
+        pageName: page.name!,
+        encryptedToken: encryptInstagramToken(page.access_token!),
+        tokenExpiresAt: expiresAt,
+      },
+      update: {
+        pageName: page.name!,
+        encryptedToken: encryptInstagramToken(page.access_token!),
+        tokenExpiresAt: expiresAt,
+      },
+    });
+
+    resultUrl.searchParams.set("facebook", "connected");
+    resultUrl.searchParams.delete("reason");
+    return reply.redirect(`${resultUrl.toString()}#page-accounts`);
+  } catch (error) {
+    resultUrl.searchParams.set("reason", error instanceof Error ? error.message : "Falha ao conectar o Facebook.");
+    return reply.redirect(`${resultUrl.toString()}#page-accounts`);
+  }
+});
+
+app.post("/api/facebook/disconnect", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  await prisma.facebookPageAccount.deleteMany({ where: { workspaceId: user.workspaceId } });
+  return reply.code(204).send();
+});
+
+app.post<{ Params: { postId: string } }>("/api/facebook/publish/:postId", {
+  config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+}, async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+
+  const [page, post] = await Promise.all([
+    prisma.facebookPageAccount.findFirst({ where: { workspaceId: user.workspaceId } }),
+    prisma.post.findFirst({
+      where: { id: request.params.postId, workspaceId: user.workspaceId, platform: "FACEBOOK" },
+      include: { mediaItems: true },
+    }),
+  ]);
+  if (!page) return reply.code(409).send({ error: { code: "FACEBOOK_NOT_CONNECTED", message: "Conecte uma Página do Facebook antes de publicar." } });
+  if (!post) return reply.code(404).send({ error: { code: "POST_NOT_FOUND", message: "Publicação do Facebook não encontrada." } });
+  if (post.status === "PUBLISHED") return reply.code(409).send({ error: { code: "ALREADY_PUBLISHED", message: "Esta publicação já foi enviada." } });
+  if (post.format !== "POST" || post.mediaItems.length > 0) {
+    return reply.code(400).send({ error: { code: "FACEBOOK_FORMAT_NOT_SUPPORTED", message: "Nesta primeira etapa, a publicação pelo Facebook aceita somente posts de texto. Fotos, vídeos, Stories e Reels serão habilitados na próxima etapa." } });
+  }
+  if (page.tokenExpiresAt.getTime() < Date.now()) {
+    return reply.code(401).send({ error: { code: "FACEBOOK_TOKEN_EXPIRED", message: "O acesso à Página expirou. Desconecte e conecte novamente o Facebook." } });
+  }
+
+  try {
+    const params = new URLSearchParams({
+      message: [post.caption, post.title].filter(Boolean).join("\n\n"),
+      access_token: decryptInstagramToken(page.encryptedToken),
+    });
+    const result = await instagramGraphRequest(`${page.pageId}/feed`, params);
+    if (typeof result.id !== "string") throw new Error("A Meta não retornou o identificador da publicação.");
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { status: "PUBLISHED", publishedAt: new Date() },
+    });
+    return { success: true, postId: result.id, permalink: `https://www.facebook.com/${result.id}` };
+  } catch (error) {
+    request.log.error({ err: error, postId: post.id }, "Facebook page publish failed");
+    return reply.code(502).send({ error: { code: "FACEBOOK_PUBLISH_FAILED", message: error instanceof Error ? error.message : "Não foi possível publicar na Página do Facebook." } });
+  }
+});
+
 app.get<{ Params: { postId: string; mediaId: string }; Querystring: { expires?: string; signature?: string } }>("/api/instagram/media/:postId/:mediaId", async (request, reply) => {
   const { postId, mediaId } = request.params;
   const expires = request.query.expires ?? "";
