@@ -485,13 +485,20 @@ app.get("/api/integrations", async (request, reply) => {
   // Instagram remains backed by its existing encrypted-token model. Other
   // providers appear as coming soon until their own OAuth and publishing
   // adapters are implemented; drafts never imply an active connection.
-  const instagramAccount = await prisma.instagramAccount.findUnique({
-    where: { workspaceId: user.workspaceId },
-    select: { id: true },
-  });
-  const connectedPlatforms = new Set<SocialPlatform>(
-    instagramAccount ? ["INSTAGRAM"] : [],
-  );
+  const [instagramAccount, facebookPage] = await Promise.all([
+    prisma.instagramAccount.findUnique({
+      where: { workspaceId: user.workspaceId },
+      select: { id: true },
+    }),
+    prisma.facebookPageAccount.findFirst({
+      where: { workspaceId: user.workspaceId },
+      select: { id: true },
+    }),
+  ]);
+  const connectedPlatforms = new Set<SocialPlatform>([
+    ...(instagramAccount ? ["INSTAGRAM" as const] : []),
+    ...(facebookPage ? ["FACEBOOK" as const] : []),
+  ]);
 
   return { integrations: getSocialProviderCatalog(connectedPlatforms) };
 });
