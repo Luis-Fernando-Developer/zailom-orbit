@@ -25,7 +25,6 @@ import {
   Sparkles,
   Trash2,
   UsersRound,
-  Youtube,
 } from 'lucide-react'
 import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, type ApiPost, type InstagramConnection } from '@/lib/api'
 import { getAcceptForRule, getAvailableFormats, getFormatRule } from '@/config/social-platform-rules'
