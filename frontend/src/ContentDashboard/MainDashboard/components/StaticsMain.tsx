@@ -219,7 +219,7 @@ export default function StaticsMain() {
             </div>
           </section>
 
-          <section className="panel posts-panel" aria-labelledby="posts-title">
+          <section className="panel posts-panel !h-auto !min-h-0 !max-h-none !overflow-visible" aria-labelledby="posts-title">
             <div className="panel-heading">
               <div>
                 <h3 id="posts-title">Publicações recentes</h3>
@@ -227,7 +227,7 @@ export default function StaticsMain() {
               </div>
               <a className="subtle-button" href="#page-posts">Ver todas <ChevronRight size={13} /></a>
             </div>
-            <div className="posts-table" role="table" aria-label="Publicações recentes">
+            <div className="posts-table !h-auto !min-h-0 !max-h-none !overflow-visible" role="table" aria-label="Publicações recentes">
               <div className="table-head" role="row">
                 <span role="columnheader">PUBLICAÇÃO</span>
                 <span role="columnheader">STATUS</span>
