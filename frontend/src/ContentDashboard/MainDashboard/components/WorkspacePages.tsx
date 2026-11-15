@@ -100,7 +100,9 @@ function PageFrame({ page, children }: PageFrameProps) {
   const { title, description } = pageMeta[page]
   const footerMessage = page === 'calendar' || page === 'posts'
     ? 'Os dados desta página são salvos no seu workspace.'
-    : page === 'marketing'
+    : page === 'accounts'
+      ? 'A conexão do Instagram é armazenada com segurança no servidor.'
+      : page === 'marketing'
       ? 'Os rascunhos são temporários e não são enviados às plataformas.'
       : 'Os exemplos desta tela ainda não estão conectados a uma API.'
 
