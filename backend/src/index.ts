@@ -608,7 +608,7 @@ app.post("/api/instagram/disconnect", async (request, reply) => {
 });
 
 
-const facebookRedirectUri = process.env.FACEBOOK_REDIRECT_URI ?? "";
+const facebookRedirectUri = process.env.FACEBOOK_REDIRECT_URI ?? (instagramPublicApiUrl ? `${instagramPublicApiUrl}/api/facebook/callback` : "");
 
 app.get("/api/facebook/status", async (request, reply) => {
   const user = await requireUser(request, reply);
