@@ -415,7 +415,7 @@ function CalendarPage() {
       const created = await createPost({
         title: title.trim(),
         caption: '',
-        platform: draftPlatform,
+        platform: 'INSTAGRAM',
         format: 'POST',
         status: 'SCHEDULED',
         scheduledAt: scheduledAt.toISOString(),
