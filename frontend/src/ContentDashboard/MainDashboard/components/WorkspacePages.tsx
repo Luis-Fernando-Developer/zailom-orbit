@@ -27,7 +27,7 @@ import {
   UsersRound,
   Youtube,
 } from 'lucide-react'
-import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, type ApiPost } from '@/lib/api'
+import { createPost, deletePost, deletePostMedia, getPostMediaItemUrl, getPostMediaUrl, getPosts, updatePost, uploadPostMedia, getInstagramStatus, getInstagramConnectUrl, disconnectInstagram, publishInstagramPost, type ApiPost, type InstagramConnection } from '@/lib/api'
 import { getAcceptForRule, getAvailableFormats, getFormatRule } from '@/config/social-platform-rules'
 
 export type WorkspacePage =
@@ -1107,36 +1107,138 @@ function AnalyticsPage() {
 }
 
 function AccountsPage() {
-  const networks = [
-    { name: 'Instagram', purpose: 'Publicações, comentários e mensagens', icon: <Instagram size={20} /> },
-    { name: 'Facebook', purpose: 'Páginas, publicações e caixa de entrada', icon: <Facebook size={20} /> },
-    { name: 'TikTok', purpose: 'Vídeos e métricas do perfil', icon: <Sparkles size={20} /> },
-    { name: 'YouTube', purpose: 'Vídeos, comentários e desempenho', icon: <Youtube size={20} /> },
-  ]
+  const [connection, setConnection] = useState<InstagramConnection | null>(null)
+  const [posts, setPosts] = useState<ApiPost[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+
+  async function loadInstagram() {
+    setIsLoading(true)
+    setError('')
+    try {
+      const [status, workspacePosts] = await Promise.all([getInstagramStatus(), getPosts()])
+      setConnection(status)
+      setPosts(workspacePosts.filter((post) => post.platform === 'INSTAGRAM' && post.status !== 'PUBLISHED'))
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a integração.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadInstagram()
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('instagram')
+    if (result === 'connected') setNotice('Instagram conectado com sucesso. Sua conta já está pronta para publicar.')
+    if (result === 'error') setError(params.get('reason') || 'Não foi possível conectar o Instagram.')
+    if (result) {
+      params.delete('instagram')
+      params.delete('reason')
+      const query = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+    }
+  }, [])
+
+  async function handleDisconnect() {
+    if (!window.confirm('Deseja realmente desconectar esta conta do Instagram?')) return
+    setIsDisconnecting(true)
+    setError('')
+    try {
+      await disconnectInstagram()
+      setConnection({ connected: false })
+      setNotice('Conta do Instagram desconectada.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível desconectar a conta.')
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }
+
+  async function handlePublish(post: ApiPost) {
+    setPublishingId(post.id)
+    setError('')
+    setNotice('')
+    try {
+      const result = await publishInstagramPost(post.id)
+      setPosts((current) => current.filter((item) => item.id !== post.id))
+      setNotice(result.permalink ? 'Publicação enviada ao Instagram com sucesso.' : 'Publicação enviada ao Instagram com sucesso.')
+      if (result.permalink) window.open(result.permalink, '_blank', 'noopener,noreferrer')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível publicar no Instagram.')
+    } finally {
+      setPublishingId(null)
+    }
+  }
+
   return (
     <PageFrame page="accounts">
-      <div className="glass-note mb-5"><Link2 size={17} /><span>As conexões usarão o fluxo oficial de autorização de cada plataforma. Nenhuma conta é conectada nesta prévia.</span></div>
-      <SectionHeading title="Canais disponíveis" description="Escolha por onde gostaria de começar." />
-      <div className="accounts-grid">
-        {networks.map((network) => (
-          <article className="panel account-card" key={network.name}>
-            <span className="account-brand-icon">{network.icon}</span>
-            <div className="flex-1">
-              <h3>{network.name}</h3>
-              <p>{network.purpose}</p>
+      <div className="glass-note mb-5"><Link2 size={17} /><span>A conexão usa o login oficial do Instagram. O Orbit armazena o token criptografado no servidor e não expõe credenciais no navegador.</span></div>
+      {notice && <p className="inline-notice mb-4" role="status">{notice}</p>}
+      {error && <p className="inline-notice mb-4" role="alert">{error}</p>}
+
+      <SectionHeading title="Instagram" description="Conecte uma conta profissional para publicar diretamente pelo Orbit." />
+      <section className="panel mb-5">
+        {isLoading ? (
+          <p className="empty-state">Verificando conexão...</p>
+        ) : connection?.connected && connection.account ? (
+          <article className="account-card">
+            <span className="account-brand-icon"><Instagram size={22} /></span>
+            <div className="min-w-0 flex-1">
+              <h3>@{connection.account.username}</h3>
+              <p>Conta profissional conectada · ID {connection.account.instagramUserId}</p>
+              <small className="table-muted">Token válido até {new Date(connection.account.tokenExpiresAt).toLocaleDateString('pt-BR')}</small>
             </div>
-            <span className="status status-rascunho">Não conectado</span>
-            <button className="glass-button" type="button" disabled><Plus size={14} /> Em breve</button>
+            <span className="status status-publicado">Conectado</span>
+            <button className="glass-button" disabled={isDisconnecting} onClick={() => void handleDisconnect()} type="button">
+              {isDisconnecting ? 'Desconectando...' : 'Desconectar'}
+            </button>
           </article>
-        ))}
-      </div>
-      <section className="panel permissions-panel">
-        <SectionHeading title="Segurança e permissões" description="A conexão deverá seguir as regras oficiais de cada rede." />
+        ) : (
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <span className="account-brand-icon"><Instagram size={24} /></span>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-white">Nenhuma conta conectada</h3>
+              <p className="text-sm text-white/60">Use uma conta Instagram Business ou Creator. Contas pessoais não são compatíveis com a API de publicação.</p>
+            </div>
+            <a className="glass-button no-underline" href={getInstagramConnectUrl()}><Instagram size={15} /> Conectar Instagram</a>
+          </div>
+        )}
+      </section>
+
+      <SectionHeading title="Publicar pelo Orbit" description="Escolha uma publicação salva e envie para a conta conectada." />
+      <section className="panel content-list">
+        {!connection?.connected ? (
+          <p className="empty-state">Conecte o Instagram para liberar a publicação direta.</p>
+        ) : isLoading ? (
+          <p className="empty-state">Carregando publicações...</p>
+        ) : posts.length ? posts.map((post) => (
+          <article className="glass-row" key={post.id}>
+            <span className="metric-icon mint"><Instagram size={16} /></span>
+            <span className="min-w-0 flex-1">
+              <strong>{post.title}</strong>
+              <span>{post.format} · {post.mediaItems?.length ?? (post.mediaName ? 1 : 0)} mídia(s) · {post.status === 'SCHEDULED' ? 'Agendado' : 'Rascunho'}</span>
+            </span>
+            <button className="glass-button" disabled={publishingId !== null} onClick={() => void handlePublish(post)} type="button">
+              <Send size={14} /> {publishingId === post.id ? 'Publicando...' : 'Publicar agora'}
+            </button>
+          </article>
+        )) : (
+          <p className="empty-state">Não há publicações pendentes para o Instagram. Crie uma em Publicações e volte aqui para enviar.</p>
+        )}
+      </section>
+
+      <section className="panel permissions-panel mt-5">
+        <SectionHeading title="Compatibilidade desta versão" description="O envio direto está habilitado para os formatos compatíveis com o fluxo Instagram Login." />
         <div className="schedule-summary">
-          <div><strong>01</strong><span>Autorização oficial OAuth</span></div>
-          <div><strong>02</strong><span>Acesso revogável a qualquer momento</span></div>
-          <div><strong>03</strong><span>Permissões mínimas necessárias</span></div>
+          <div><strong>01</strong><span>Post de imagem JPEG</span></div>
+          <div><strong>02</strong><span>Reels em vídeo MP4</span></div>
+          <div><strong>03</strong><span>Carrossel de 2 a 10 mídias JPEG/MP4</span></div>
         </div>
+        <p className="integration-note mt-3">Stories, métricas avançadas e publicação automática no horário agendado ainda não estão habilitados. A publicação manual é confirmada pela API da Meta.</p>
       </section>
     </PageFrame>
   )
