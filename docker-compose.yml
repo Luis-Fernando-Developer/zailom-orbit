@@ -13,6 +13,13 @@ services:
       TRUST_PROXY: "true"
       APP_ORIGIN: ${APP_ORIGIN:-https://orbit.zailom.com}
       DATABASE_URL: postgresql://${POSTGRES_USER:-orbit}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD in the .env file}@postgres:5432/${POSTGRES_DB:-orbit}?schema=public
+      INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID:-}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET:-}
+      INSTAGRAM_CONFIG_ID: ${INSTAGRAM_CONFIG_ID:-}
+      INSTAGRAM_REDIRECT_URI: ${INSTAGRAM_REDIRECT_URI:-https://orbit.zailom.com/api/instagram/callback}
+      INSTAGRAM_API_VERSION: ${INSTAGRAM_API_VERSION:-v23.0}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://api-orbit.zailom.com}
+      INSTAGRAM_TOKEN_ENCRYPTION_KEY: ${INSTAGRAM_TOKEN_ENCRYPTION_KEY:-}
     networks:
       - zailomOrbit_net
       - orbit_data_net
