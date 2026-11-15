@@ -700,6 +700,15 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
       if (!response.ok || body.error) throw new Error(body.error?.message ?? "Não foi possível listar as Páginas do Facebook.");
       return body;
     });
+    app.log.info({
+      facebookPagesReturned: (accountsPayload.data ?? []).map((page) => ({
+        pageId: page.id,
+        pageName: page.name,
+        tasks: page.tasks ?? [],
+        hasPageAccessToken: Boolean(page.access_token),
+      })),
+    }, "Facebook OAuth: páginas retornadas pela Meta");
+
     const publishingTasks = [
       "CREATE_CONTENT",
       "MANAGE",
