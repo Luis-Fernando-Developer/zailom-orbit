@@ -697,29 +697,36 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_de
       if (!response.ok || body.error) throw new Error(body.error?.message ?? "Não foi possível listar as Páginas do Facebook.");
       return body;
     });
+    const publishingTasks = [
+      "CREATE_CONTENT",
+      "MANAGE",
+      "PROFILE_PLUS_CREATE_CONTENT",
+      "PROFILE_PLUS_MANAGE",
+      "PROFILE_PLUS_FULL_CONTROL",
+    ];
     const eligiblePages = (accountsPayload.data ?? []).filter((page) =>
-      page.id && page.name && page.access_token && (page.tasks ?? []).some((task) => ["CREATE_CONTENT", "MANAGE"].includes(task)),
+      page.id && page.name && page.access_token && (page.tasks ?? []).some((task) => publishingTasks.includes(task)),
     );
-    if (!eligiblePages.length) throw new Error("Nenhuma Página com permissão de criação de conteúdo foi encontrada. Verifique se seu perfil tem acesso à Página e concedeu pages_manage_posts, pages_read_engagement e pages_show_list.");
-    if (eligiblePages.length > 1) throw new Error("Mais de uma Página foi encontrada. Nesta primeira versão, deixe apenas uma Página selecionada para o Orbit na autorização da Meta.");
+    if (!eligiblePages.length) throw new Error("A Meta não retornou nenhuma Página com permissão para criar conteúdo. Confirme o acesso do seu perfil às Páginas e as permissões pages_manage_posts, pages_read_engagement e pages_show_list.");
 
-    const page = eligiblePages[0];
     const expiresAt = new Date(Date.now() + (longTokenPayload.expires_in ?? tokenPayload.expires_in ?? 60 * 24 * 60 * 60) * 1000);
-    await prisma.facebookPageAccount.upsert({
-      where: { workspaceId_pageId: { workspaceId: savedState.workspaceId, pageId: page.id! } },
-      create: {
-        workspaceId: savedState.workspaceId,
-        pageId: page.id!,
-        pageName: page.name!,
-        encryptedToken: encryptMetaToken(page.access_token!),
-        tokenExpiresAt: expiresAt,
-      },
-      update: {
-        pageName: page.name!,
-        encryptedToken: encryptMetaToken(page.access_token!),
-        tokenExpiresAt: expiresAt,
-      },
-    });
+    for (const page of eligiblePages) {
+      await prisma.facebookPageAccount.upsert({
+        where: { workspaceId_pageId: { workspaceId: savedState.workspaceId, pageId: page.id! } },
+        create: {
+          workspaceId: savedState.workspaceId,
+          pageId: page.id!,
+          pageName: page.name!,
+          encryptedToken: encryptMetaToken(page.access_token!),
+          tokenExpiresAt: expiresAt,
+        },
+        update: {
+          pageName: page.name!,
+          encryptedToken: encryptMetaToken(page.access_token!),
+          tokenExpiresAt: expiresAt,
+        },
+      });
+    }
 
     resultUrl.searchParams.set("facebook", "connected");
     resultUrl.searchParams.delete("reason");
