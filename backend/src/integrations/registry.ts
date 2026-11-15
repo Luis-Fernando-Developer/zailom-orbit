@@ -21,6 +21,39 @@ export interface SocialProviderCatalogItem extends SocialProviderDefinition {
   state: IntegrationState;
 }
 
+export interface ProviderConnection {
+  connected: boolean;
+  externalAccountId?: string;
+  displayName?: string;
+}
+
+export interface SocialPublishInput {
+  workspaceId: string;
+  postId: string;
+}
+
+export interface SocialPublishResult {
+  externalMediaId: string;
+  permalink?: string | null;
+}
+
+/**
+ * Runtime contract every concrete network adapter must implement.
+ * Credentials stay server-side; adapters receive workspace-scoped identifiers,
+ * never browser-supplied access tokens.
+ */
+export interface SocialProviderAdapter {
+  readonly definition: SocialProviderDefinition;
+  getConnection(workspaceId: string): Promise<ProviderConnection>;
+  createAuthorizationUrl(context: {
+    userId: string;
+    workspaceId: string;
+    redirectUri: string;
+  }): Promise<string>;
+  disconnect(workspaceId: string): Promise<void>;
+  publish(input: SocialPublishInput): Promise<SocialPublishResult>;
+}
+
 /**
  * Central registry for social providers.
  *
