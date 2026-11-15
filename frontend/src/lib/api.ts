@@ -79,15 +79,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (response.status === 204) return undefined as T
-  const body = await response.json() as ApiErrorBody & T
+  const responseText = await response.text()
+  let body: (ApiErrorBody & T) | null = null
+  if (responseText) {
+    try {
+      body = JSON.parse(responseText) as ApiErrorBody & T
+    } catch {
+      if (!response.ok) {
+        throw new ApiError(
+          `O servidor respondeu com HTTP ${response.status}, mas retornou uma resposta inválida: ${responseText.slice(0, 300)}`,
+          response.status,
+        )
+      }
+      throw new ApiError('O servidor retornou uma resposta que o Orbit não conseguiu interpretar.', response.status)
+    }
+  }
   if (!response.ok) {
     throw new ApiError(
-      body.error?.message ?? 'O servidor não conseguiu concluir a solicitação.',
+      body?.error?.message ?? `O servidor não conseguiu concluir a solicitação (HTTP ${response.status}).`,
       response.status,
-      body.error?.code,
+      body?.error?.code,
     )
   }
-  return body
+  return (body ?? {}) as T
 }
 
 export async function getCurrentUser(): Promise<AuthUser> {
