@@ -79,6 +79,9 @@ model Post {
   workspaceId String
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   mediaItems  PostMedia[]
+  instagramMediaId String?
+  instagramPermalink String?
+  publishedAt DateTime?
 
   @@index([workspaceId, scheduledAt])
   @@index([workspaceId, status])
@@ -96,4 +99,29 @@ model PostMedia {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, sortOrder])
+}
+
+
+model InstagramAccount {
+  id             String   @id @default(cuid())
+  workspaceId    String   @unique
+  instagramUserId String
+  username       String
+  encryptedToken String
+  tokenExpiresAt DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+model InstagramOAuthState {
+  id          String   @id @default(cuid())
+  state       String   @unique
+  userId      String
+  workspaceId String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
 }
