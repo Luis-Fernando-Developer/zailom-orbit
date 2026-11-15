@@ -219,6 +219,46 @@ export default function StaticsMain() {
             </div>
           </section>
 
+          <section className="panel posts-panel" aria-labelledby="posts-title">
+            <div className="panel-heading">
+              <div>
+                <h3 id="posts-title">Publicações recentes</h3>
+                <p>Conteúdo real cadastrado no seu workspace.</p>
+              </div>
+              <a className="subtle-button" href="#page-posts">Ver todas <ChevronRight size={13} /></a>
+            </div>
+            <div className="posts-table" role="table" aria-label="Publicações recentes">
+              <div className="table-head" role="row">
+                <span role="columnheader">PUBLICAÇÃO</span>
+                <span role="columnheader">STATUS</span>
+                <span role="columnheader">ATUALIZADA</span>
+                <span role="columnheader">REDE</span>
+                <span aria-hidden="true" />
+              </div>
+              {isLoading ? (
+                <p className="empty-state">Carregando publicações...</p>
+              ) : visibleRecent.length ? visibleRecent.slice(0, 6).map((post) => (
+                <div className="post-row" role="row" key={post.id}>
+                  <div className="post-name" role="cell">
+                    <div className="post-thumb sage" aria-hidden="true">{post.platform === 'INSTAGRAM' ? 'IG' : post.platform.slice(0, 2)}</div>
+                    <div><strong>{post.title}</strong><span>{formatLabels[post.format]}</span></div>
+                  </div>
+                  <span className={`status status-${post.status === 'PUBLISHED' ? 'publicado' : post.status === 'SCHEDULED' ? 'agendado' : 'rascunho'}`} role="cell">
+                    <i aria-hidden="true" />{statusLabels[post.status]}
+                  </span>
+                  <span className="table-muted" role="cell">{formatDate(post.updatedAt, '—')}</span>
+                  <span className="table-muted" role="cell">{platformLabels[post.platform]}</span>
+                  <span className="row-more" role="cell" aria-hidden="true">···</span>
+                </div>
+              )) : (
+                <p className="no-results" role="status">
+                  {posts.length ? `Nenhuma publicação encontrada para “${search}”.` : 'Nenhuma publicação cadastrada ainda. Crie a primeira para ver seus dados aqui.'}
+                </p>
+              )}
+            </div>
+            <p className="table-muted demo-note">Alcance, curtidas e engajamento serão exibidos quando as contas sociais estiverem conectadas.</p>
+          </section>
+
           <div className="dashboard-grid">
             <section className="panel" aria-labelledby="activity-title">
               <div className="panel-heading">
@@ -278,46 +318,6 @@ export default function StaticsMain() {
               <a className="text-link" href="#page-calendar">Ver calendário <ChevronRight size={13} /></a>
             </section>
           </div>
-
-          <section className="panel posts-panel" aria-labelledby="posts-title">
-            <div className="panel-heading">
-              <div>
-                <h3 id="posts-title">Publicações recentes</h3>
-                <p>Conteúdo real cadastrado no seu workspace.</p>
-              </div>
-              <a className="subtle-button" href="#page-posts">Ver todas <ChevronRight size={13} /></a>
-            </div>
-            <div className="posts-table" role="table" aria-label="Publicações recentes">
-              <div className="table-head" role="row">
-                <span role="columnheader">PUBLICAÇÃO</span>
-                <span role="columnheader">STATUS</span>
-                <span role="columnheader">ATUALIZADA</span>
-                <span role="columnheader">REDE</span>
-                <span aria-hidden="true" />
-              </div>
-              {isLoading ? (
-                <p className="empty-state">Carregando publicações...</p>
-              ) : visibleRecent.length ? visibleRecent.slice(0, 6).map((post) => (
-                <div className="post-row" role="row" key={post.id}>
-                  <div className="post-name" role="cell">
-                    <div className="post-thumb sage" aria-hidden="true">{post.platform === 'INSTAGRAM' ? 'IG' : post.platform.slice(0, 2)}</div>
-                    <div><strong>{post.title}</strong><span>{formatLabels[post.format]}</span></div>
-                  </div>
-                  <span className={`status status-${post.status === 'PUBLISHED' ? 'publicado' : post.status === 'SCHEDULED' ? 'agendado' : 'rascunho'}`} role="cell">
-                    <i aria-hidden="true" />{statusLabels[post.status]}
-                  </span>
-                  <span className="table-muted" role="cell">{formatDate(post.updatedAt, '—')}</span>
-                  <span className="table-muted" role="cell">{platformLabels[post.platform]}</span>
-                  <span className="row-more" role="cell" aria-hidden="true">···</span>
-                </div>
-              )) : (
-                <p className="no-results" role="status">
-                  {posts.length ? `Nenhuma publicação encontrada para “${search}”.` : 'Nenhuma publicação cadastrada ainda. Crie a primeira para ver seus dados aqui.'}
-                </p>
-              )}
-            </div>
-            <p className="table-muted demo-note">Alcance, curtidas e engajamento serão exibidos quando as contas sociais estiverem conectadas.</p>
-          </section>
 
           <div className="dashboard-grid">
             <section className="panel">
