@@ -412,8 +412,9 @@ app.post("/api/auth/logout", async (request, reply) => {
 
 const instagramApiVersion = process.env.INSTAGRAM_API_VERSION ?? "v23.0";
 const instagramRedirectUri = process.env.INSTAGRAM_REDIRECT_URI ?? "";
+const instagramConfigId = process.env.INSTAGRAM_CONFIG_ID ?? "";
 const instagramPublicApiUrl = (process.env.API_PUBLIC_URL ?? "").replace(/\/$/, "");
-const instagramScopes = ["instagram_business_basic", "instagram_business_content_publish"];
+const instagramTokenNeverExpiresAt = new Date("9999-12-31T23:59:59.999Z");
 
 function instagramEncryptionKey(): Buffer {
   const value = process.env.INSTAGRAM_TOKEN_ENCRYPTION_KEY ?? "";
@@ -442,7 +443,7 @@ function instagramMediaSignature(postId: string, mediaId: string, expires: strin
 }
 
 async function instagramGraphRequest(path: string, params: URLSearchParams, method: "GET" | "POST" = "POST") {
-  const url = new URL(`https://graph.instagram.com/${instagramApiVersion}/${path}`);
+  const url = new URL(`https://graph.facebook.com/${instagramApiVersion}/${path}`);
   if (method === "GET") url.search = params.toString();
   const response = await fetch(url, method === "POST" ? {
     method: "POST",
@@ -472,19 +473,19 @@ app.get("/api/instagram/connect", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
   const appId = process.env.INSTAGRAM_APP_ID;
-  if (!appId || !instagramRedirectUri) {
-    return reply.code(503).send({ error: { code: "INSTAGRAM_NOT_CONFIGURED", message: "Configure INSTAGRAM_APP_ID e INSTAGRAM_REDIRECT_URI no ambiente do Orbit." } });
+  if (!appId || !instagramConfigId || !instagramRedirectUri) {
+    return reply.code(503).send({ error: { code: "INSTAGRAM_NOT_CONFIGURED", message: "Configure INSTAGRAM_APP_ID, INSTAGRAM_CONFIG_ID e INSTAGRAM_REDIRECT_URI no ambiente do Orbit." } });
   }
   const state = randomBytes(32).toString("hex");
   await prisma.instagramOAuthState.deleteMany({ where: { expiresAt: { lte: new Date() } } });
   await prisma.instagramOAuthState.create({
     data: { state, userId: user.id, workspaceId: user.workspaceId, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
   });
-  const authorize = new URL("https://www.instagram.com/oauth/authorize");
+  const authorize = new URL("https://www.facebook.com/dialog/oauth");
   authorize.searchParams.set("client_id", appId);
+  authorize.searchParams.set("config_id", instagramConfigId);
   authorize.searchParams.set("redirect_uri", instagramRedirectUri);
   authorize.searchParams.set("response_type", "code");
-  authorize.searchParams.set("scope", instagramScopes.join(","));
   authorize.searchParams.set("state", state);
   return reply.redirect(authorize.toString());
 });
@@ -511,47 +512,49 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_re
     const appSecret = process.env.INSTAGRAM_APP_SECRET;
     if (!appId || !appSecret || !instagramRedirectUri) throw new Error("Integração do Instagram não configurada no servidor.");
 
-    const shortTokenBody = new URLSearchParams({
-      client_id: appId,
-      client_secret: appSecret,
-      grant_type: "authorization_code",
-      redirect_uri: instagramRedirectUri,
-      code,
-    });
-    const shortResponse = await fetch("https://api.instagram.com/oauth/access_token", { method: "POST", body: shortTokenBody });
-    const shortPayload = await shortResponse.json() as { access_token?: string; user_id?: number; error_message?: string };
-    if (!shortResponse.ok || !shortPayload.access_token) throw new Error(shortPayload.error_message ?? "Não foi possível obter o token do Instagram.");
+    const tokenUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/oauth/access_token`);
+    tokenUrl.searchParams.set("client_id", appId);
+    tokenUrl.searchParams.set("client_secret", appSecret);
+    tokenUrl.searchParams.set("redirect_uri", instagramRedirectUri);
+    tokenUrl.searchParams.set("code", code);
+    const tokenResponse = await fetch(tokenUrl);
+    const tokenPayload = await tokenResponse.json() as { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
+    if (!tokenResponse.ok || !tokenPayload.access_token) {
+      throw new Error(tokenPayload.error?.message ?? "Não foi possível trocar o código de autorização por um token do Login Unificado.");
+    }
 
-    const longUrl = new URL("https://graph.instagram.com/access_token");
-    longUrl.searchParams.set("grant_type", "ig_exchange_token");
-    longUrl.searchParams.set("client_secret", appSecret);
-    longUrl.searchParams.set("access_token", shortPayload.access_token);
-    const longResponse = await fetch(longUrl);
-    const longPayload = await longResponse.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
-    if (!longResponse.ok || !longPayload.access_token) throw new Error(longPayload.error?.message ?? "Não foi possível gerar um token de longa duração.");
-
-    const profileUrl = new URL(`https://graph.instagram.com/${instagramApiVersion}/me`);
-    profileUrl.searchParams.set("fields", "user_id,username");
-    profileUrl.searchParams.set("access_token", longPayload.access_token);
-    const profileResponse = await fetch(profileUrl);
-    const profile = await profileResponse.json() as { user_id?: string; id?: string; username?: string; error?: { message?: string } };
-    const instagramUserId = profile.user_id ?? profile.id;
-    if (!profileResponse.ok || !instagramUserId || !profile.username) throw new Error(profile.error?.message ?? "Não foi possível identificar a conta profissional.");
+    const accountsUrl = new URL(`https://graph.facebook.com/${instagramApiVersion}/me/assigned_instagram_accounts`);
+    accountsUrl.searchParams.set("fields", "id,username");
+    accountsUrl.searchParams.set("access_token", tokenPayload.access_token);
+    const accountsResponse = await fetch(accountsUrl);
+    const accountsPayload = await accountsResponse.json() as { data?: Array<{ id?: string; username?: string }>; error?: { message?: string } };
+    if (!accountsResponse.ok || !accountsPayload.data?.length) {
+      throw new Error(accountsPayload.error?.message ?? "Nenhuma conta profissional do Instagram foi compartilhada com o Zailom Orbit nessa configuração.");
+    }
+    if (accountsPayload.data.length !== 1) {
+      throw new Error("A configuração compartilhou mais de uma conta do Instagram. Para esta versão do Orbit, selecione apenas uma conta na configuração da Meta.");
+    }
+    const instagramAccount = accountsPayload.data[0];
+    const instagramUserId = instagramAccount.id;
+    const instagramUsername = instagramAccount.username;
+    if (!instagramUserId || !instagramUsername) {
+      throw new Error("A Meta não retornou o ID e o nome de usuário da conta do Instagram.");
+    }
 
     await prisma.instagramAccount.upsert({
       where: { workspaceId: savedState.workspaceId },
       create: {
         workspaceId: savedState.workspaceId,
         instagramUserId,
-        username: profile.username,
-        encryptedToken: encryptInstagramToken(longPayload.access_token),
-        tokenExpiresAt: new Date(Date.now() + (longPayload.expires_in ?? 5184000) * 1000),
+        username: instagramUsername,
+        encryptedToken: encryptInstagramToken(tokenPayload.access_token),
+        tokenExpiresAt: instagramTokenNeverExpiresAt,
       },
       update: {
         instagramUserId,
-        username: profile.username,
-        encryptedToken: encryptInstagramToken(longPayload.access_token),
-        tokenExpiresAt: new Date(Date.now() + (longPayload.expires_in ?? 5184000) * 1000),
+        username: instagramUsername,
+        encryptedToken: encryptInstagramToken(tokenPayload.access_token),
+        tokenExpiresAt: instagramTokenNeverExpiresAt,
       },
     });
     const successUrl = new URL("/", appOrigin);
@@ -625,20 +628,8 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
   if (post.format === "CAROUSEL" && (post.mediaItems.length < 2 || post.mediaItems.length > 10 || post.mediaItems.some((item) => !["image/jpeg", "video/mp4"].includes(item.mimeType)))) {
     return reply.code(400).send({ error: { code: "INVALID_CAROUSEL_MEDIA", message: "Carrossel exige de 2 a 10 mídias JPEG ou MP4." } });
   }
-  if (account.tokenExpiresAt.getTime() < Date.now() + 24 * 60 * 60 * 1000) {
-    try {
-      const refreshUrl = new URL("https://graph.instagram.com/refresh_access_token");
-      refreshUrl.searchParams.set("grant_type", "ig_refresh_token");
-      refreshUrl.searchParams.set("access_token", decryptInstagramToken(account.encryptedToken));
-      const refreshedResponse = await fetch(refreshUrl);
-      const refreshed = await refreshedResponse.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
-      if (!refreshedResponse.ok || !refreshed.access_token) throw new Error(refreshed.error?.message ?? "Token expirado. Reconecte sua conta.");
-      account.encryptedToken = encryptInstagramToken(refreshed.access_token);
-      account.tokenExpiresAt = new Date(Date.now() + (refreshed.expires_in ?? 5184000) * 1000);
-      await prisma.instagramAccount.update({ where: { id: account.id }, data: { encryptedToken: account.encryptedToken, tokenExpiresAt: account.tokenExpiresAt } });
-    } catch {
-      return reply.code(401).send({ error: { code: "INSTAGRAM_TOKEN_EXPIRED", message: "A autorização do Instagram expirou. Desconecte e conecte novamente a conta." } });
-    }
+  if (account.tokenExpiresAt.getTime() < Date.now()) {
+    return reply.code(401).send({ error: { code: "INSTAGRAM_TOKEN_EXPIRED", message: "O token do Login Unificado expirou. Desconecte e conecte novamente a conta." } });
   }
   const accessToken = decryptInstagramToken(account.encryptedToken);
   const mediaUrl = (mediaId: string) => {
