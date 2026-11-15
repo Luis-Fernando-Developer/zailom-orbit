@@ -1216,7 +1216,7 @@ function AccountsPage() {
       <SectionHeading title="Outras redes" description="A estrutura multirrede já está preparada. As próximas conexões serão liberadas por plataforma." />
       <section className="panel mb-5">
         <div className="grid gap-3 sm:grid-cols-2">
-          {integrations.filter((item) => item.platform !== 'INSTAGRAM').map((item) => (
+          {integrations.filter((item) => item.platform !== 'INSTAGRAM' && item.platform !== 'OTHER').map((item) => (
             <article className="account-card" key={item.platform}>
               <span className="account-brand-icon">{item.name.slice(0, 1)}</span>
               <div className="min-w-0 flex-1">
