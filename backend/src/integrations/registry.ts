@@ -7,7 +7,7 @@ export interface SocialProviderDefinition {
   name: string;
   provider: string;
   authentication: "META_OAUTH" | "OAUTH_2" | "OAUTH_2_PKCE" | "NONE";
-  supportedFormats: string[];
+  plannedFormats: string[];
   capabilities: {
     connect: boolean;
     publish: boolean;
@@ -34,7 +34,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "Instagram",
     provider: "Meta",
     authentication: "META_OAUTH",
-    supportedFormats: ["POST", "STORY", "REEL", "CAROUSEL"],
+    plannedFormats: ["POST", "REEL", "CAROUSEL"],
     capabilities: { connect: true, publish: true, scheduling: true, analytics: false, inbox: false },
   },
   FACEBOOK: {
@@ -42,7 +42,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "Facebook",
     provider: "Meta",
     authentication: "META_OAUTH",
-    supportedFormats: ["POST", "STORY", "REEL", "VIDEO", "CAROUSEL"],
+    plannedFormats: ["POST", "STORY", "REEL", "VIDEO", "CAROUSEL"],
     capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
   },
   TIKTOK: {
@@ -50,7 +50,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "TikTok",
     provider: "TikTok",
     authentication: "OAUTH_2",
-    supportedFormats: ["POST", "VIDEO", "CAROUSEL"],
+    plannedFormats: ["POST", "VIDEO", "CAROUSEL"],
     capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
   },
   YOUTUBE: {
@@ -58,7 +58,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "YouTube",
     provider: "Google",
     authentication: "OAUTH_2",
-    supportedFormats: ["VIDEO", "SHORT"],
+    plannedFormats: ["VIDEO", "SHORT"],
     capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
   },
   LINKEDIN: {
@@ -66,7 +66,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "LinkedIn",
     provider: "LinkedIn",
     authentication: "OAUTH_2_PKCE",
-    supportedFormats: ["POST", "VIDEO", "CAROUSEL"],
+    plannedFormats: ["POST", "VIDEO", "CAROUSEL"],
     capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
   },
   OTHER: {
@@ -74,7 +74,7 @@ export const socialProviderRegistry: Record<SocialPlatform, SocialProviderDefini
     name: "Outra rede",
     provider: "Custom",
     authentication: "NONE",
-    supportedFormats: ["POST"],
+    plannedFormats: ["POST"],
     capabilities: { connect: false, publish: false, scheduling: false, analytics: false, inbox: false },
   },
 };
