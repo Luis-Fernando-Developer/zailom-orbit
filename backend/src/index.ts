@@ -499,7 +499,8 @@ app.get<{ Querystring: { code?: string; state?: string; error?: string; error_re
 
   const savedState = await prisma.instagramOAuthState.findUnique({ where: { state } });
   await prisma.instagramOAuthState.deleteMany({ where: { state } });
-  if (!savedState || savedState.expiresAt <= new Date()) {
+  const callbackUser = await getAuthenticatedUser(request);
+  if (!savedState || savedState.expiresAt <= new Date() || !callbackUser || callbackUser.id !== savedState.userId || callbackUser.workspaceId !== savedState.workspaceId) {
     failUrl.searchParams.set("reason", "A autorização expirou. Tente conectar novamente.");
     return reply.redirect(`${failUrl.toString()}#page-accounts`);
   }
@@ -682,7 +683,7 @@ app.post<{ Params: { postId: string } }>("/api/instagram/publish/:postId", {
 
     let finished = false;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const status = await instagramGraphRequest(creationId, new URLSearchParams({ fields: "status_code,status" }), "GET");
+      const status = await instagramGraphRequest(creationId, new URLSearchParams({ fields: "status_code,status", access_token: accessToken }), "GET");
       if (status.status_code === "FINISHED") { finished = true; break; }
       if (status.status_code === "ERROR" || status.status_code === "EXPIRED") {
         throw new Error(typeof status.status === "string" ? status.status : "A Meta não conseguiu processar a mídia.");
