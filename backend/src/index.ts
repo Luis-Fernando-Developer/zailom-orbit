@@ -1397,13 +1397,16 @@ async function processScheduledInstagramPosts(): Promise<void> {
     const now = new Date();
     const duePosts = await prisma.post.findMany({
       where: {
-        platform: "INSTAGRAM",
         status: "SCHEDULED",
-        format: { in: ["POST", "REEL", "CAROUSEL"] },
         scheduledAt: { lte: now },
+        OR: [
+          { platform: "INSTAGRAM", format: { in: ["POST", "REEL", "CAROUSEL"] } },
+          { platform: "FACEBOOK", format: "POST" },
+        ],
       },
       select: {
         id: true,
+        platform: true,
         workspaceId: true,
         workspace: { select: { ownerId: true } },
       },
@@ -1420,7 +1423,8 @@ async function processScheduledInstagramPosts(): Promise<void> {
 
       try {
         sessionToken = await createSession(post.workspace.ownerId);
-        const response = await fetch(`http://127.0.0.1:${port}/api/instagram/publish/${encodeURIComponent(post.id)}`, {
+        const platformPath = post.platform === "FACEBOOK" ? "facebook" : "instagram";
+        const response = await fetch(`http://127.0.0.1:${port}/api/${platformPath}/publish/${encodeURIComponent(post.id)}`, {
           method: "POST",
           headers: {
             Cookie: `${sessionCookieName}=${sessionToken}`,
@@ -1432,15 +1436,15 @@ async function processScheduledInstagramPosts(): Promise<void> {
           const details = (await response.text()).slice(0, 1000);
           app.log.error(
             { postId: post.id, statusCode: response.status, response: details },
-            "Scheduled Instagram publication failed",
+            "Scheduled social publication failed",
           );
           continue;
         }
 
         scheduledPublishLastAttempt.delete(post.id);
-        app.log.info({ postId: post.id }, "Scheduled Instagram publication completed");
+        app.log.info({ postId: post.id }, "Scheduled social publication completed");
       } catch (error) {
-        app.log.error({ err: error, postId: post.id }, "Scheduled Instagram worker failed");
+        app.log.error({ err: error, postId: post.id }, "Scheduled social worker failed");
       } finally {
         if (sessionToken) {
           await prisma.session.deleteMany({ where: { tokenHash: hashToken(sessionToken) } }).catch((error: unknown) => {
@@ -1455,7 +1459,7 @@ async function processScheduledInstagramPosts(): Promise<void> {
       if (attemptedAt < cutoff) scheduledPublishLastAttempt.delete(postId);
     }
   } catch (error) {
-    app.log.error({ err: error }, "Scheduled Instagram worker could not load due posts");
+    app.log.error({ err: error }, "Scheduled social worker could not load due posts");
   } finally {
     scheduledPublishWorkerRunning = false;
   }
@@ -1463,7 +1467,7 @@ async function processScheduledInstagramPosts(): Promise<void> {
 
 try {
   await app.listen({ port, host });
-  app.log.info({ intervalMs: scheduledPublishIntervalMs }, "Scheduled Instagram worker started");
+  app.log.info({ intervalMs: scheduledPublishIntervalMs }, "Scheduled social worker started");
   const scheduledPublishTimer = setInterval(() => {
     void processScheduledInstagramPosts();
   }, scheduledPublishIntervalMs);
