@@ -306,7 +306,9 @@ function CalendarPage() {
   const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     let active = true
@@ -741,6 +743,21 @@ function PostsPage() {
     }
   }
 
+  async function publishFacebookDraft(post: ApiPost) {
+    setPublishingId(post.id)
+    setError('')
+    setNotice('')
+    try {
+      await publishFacebookPost(post.id)
+      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, status: 'PUBLISHED' } : item))
+      setNotice('"' + post.title + '" publicada no Facebook com sucesso.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível publicar no Facebook.')
+    } finally {
+      setPublishingId(null)
+    }
+  }
+
   async function removePost(post: ApiPost) {
     if (!window.confirm(`Excluir a publicação "${post.title}"? Esta ação não pode ser desfeita.`)) return
     setError('')
@@ -781,7 +798,8 @@ function PostsPage() {
           </button>
         </form>
       )}
-      {error && <p className="inline-notice" role="alert">{error}</p>}
+      {notice && <p className="inline-notice mb-3" role="status">{notice}</p>}
+      {error && <p className="inline-notice mb-3" role="alert">{error}</p>}
       <section className="panel posts-panel">
         <div className="filter-row">
           <div className="filter-tabs" role="tablist" aria-label="Filtrar publicações">
@@ -811,6 +829,11 @@ function PostsPage() {
               </div>
               <span className={`status status-${statusLabels[post.status].toLocaleLowerCase('pt-BR')}`}>{statusLabels[post.status]}</span>
               <span className="table-muted">{postDate(post)}</span>
+              {post.platform === 'FACEBOOK' && post.status !== 'PUBLISHED' && (
+                <button className="glass-button" disabled={publishingId !== null} onClick={() => void publishFacebookDraft(post)} type="button">
+                  <Send size={14} /> {publishingId === post.id ? 'Publicando...' : 'Publicar agora'}
+                </button>
+              )}
               <button
                 className="glass-icon-button"
                 onClick={() => void removePost(post)}
