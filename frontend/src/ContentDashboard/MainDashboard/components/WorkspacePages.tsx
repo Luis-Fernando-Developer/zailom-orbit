@@ -306,9 +306,7 @@ function CalendarPage() {
   const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     let active = true
@@ -697,7 +695,9 @@ function PostsPage() {
   const [posts, setPosts] = useState<ApiPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   async function loadPosts() {
     setError('')
